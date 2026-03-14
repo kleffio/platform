@@ -1,5 +1,5 @@
-import DashboardPage from "@/pages/dashboard/DashboardPage";
+import { RouterProvider } from "@/app/providers/router-provider";
 
 export default function App() {
-  return <DashboardPage />;
+  return <RouterProvider />;
 }
