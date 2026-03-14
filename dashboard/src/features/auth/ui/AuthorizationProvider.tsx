@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { AuthorizationContext } from "../model/authorization-context";
-import type { AuthorizationContextValue } from "@/shared/auth";
+import { AuthorizationContext } from "../context/AuthorizationContext";
+import type { AuthorizationContextValue } from "../types";
 
 interface Props {
   children: ReactNode;

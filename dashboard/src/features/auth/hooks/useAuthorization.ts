@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { AuthorizationContext } from "../model/authorization-context";
+import { AuthorizationContext } from "../context/AuthorizationContext";
 
 export function useAuthorization() {
   const context = useContext(AuthorizationContext);

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AuthProvider as OidcProvider } from "react-oidc-context";
-import { oidcConfig } from "../config/oidc";
-import { AuthorizationProvider } from "./authorization-provider";
+import { oidcConfig } from "@/shared/config/oidc";
+import { AuthorizationProvider } from "./AuthorizationProvider";
 
 interface Props {
   children: ReactNode;

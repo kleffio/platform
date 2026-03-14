@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { AuthProvider as SharedAuthProvider } from "@/shared/auth";
+import { AuthProvider as SharedAuthProvider } from "@/features/auth";
 
 interface Props {
   children: ReactNode;
