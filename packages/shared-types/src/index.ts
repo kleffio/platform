@@ -6,7 +6,7 @@ export type {
   PaginatedResponse,
   ISODateString,
   UUID,
-} from "./common.js";
+} from "./common";
 
 export type {
   UserRole,
@@ -14,7 +14,7 @@ export type {
   Organization,
   OrganizationMember,
   AuthSession,
-} from "./user.js";
+} from "./user";
 
 export type {
   GameServerRegion,
@@ -25,9 +25,9 @@ export type {
   GameServer,
   DeploymentStatus,
   Deployment,
-} from "./gameserver.js";
+} from "./gameserver";
 
-export { REGION_LABELS } from "./gameserver.js";
+export { REGION_LABELS } from "./gameserver";
 
 export type {
   BillingPlan,
@@ -38,4 +38,4 @@ export type {
   InvoiceLineItem,
   Invoice,
   UsageSummary,
-} from "./billing.js";
+} from "./billing";

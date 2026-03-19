@@ -4,10 +4,10 @@
 @import "@fontsource-variable/geist";
 
 /* Design tokens & theme — sourced from @kleff/ui */
-@import "../../../../../packages/ui/src/styles/tokens.css";
+@import "@kleff/ui/styles";
 
 /* Tell Tailwind to scan @kleff/ui source files for class names */
-@source "../../../../../packages/ui/src";
+@source "../../../../node_modules/@kleff/ui/src";
 
 @custom-variant dark (&:is(.dark *));
 

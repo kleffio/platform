@@ -17,17 +17,25 @@ React frontend for the Kleff platform. Provides the main user interface for mana
 
 ```
 src/
-├── app/            # App-level setup (providers, global styles)
-├── features/       # Feature modules (auth, etc.)
-│   └── auth/       # OIDC auth — context, hooks, types, UI
+├── app/            # App-level wiring (router, guards, interceptors, providers, styles)
+│   ├── guards/     # AuthGuard, GuestGuard
+│   ├── interceptors/ # HTTP interceptors (auth 401/403 handling)
+│   ├── providers/  # QueryClient, ThemeProvider, ToastProvider
+│   ├── router/     # Route definitions and ROUTES constants
+│   └── styles/     # Global CSS entry point
+├── features/       # Self-contained domain slices
+│   └── auth/       # OIDC auth — config, context, hooks, providers, types
+├── layouts/        # Page shell components (sidebar, topbar)
 ├── pages/          # Route-level page components
-│   └── dashboard/  # Main dashboard page
-└── shared/         # Cross-feature utilities
+│   ├── dashboard/  # Main dashboard page (authenticated)
+│   └── components/ # Component showcase (guest)
+└── shared/         # Cross-feature utilities (no domain knowledge)
     ├── api/        # Axios client & API helpers
-    ├── config/     # App configuration (env vars)
-    ├── lib/        # General utility functions
-    └── ui/         # Shared UI primitives (shadcn components)
+    ├── hooks/      # Reusable React hooks
+    └── utils/      # Pure utility functions
 ```
+
+UI primitives live in `@kleff/ui` (the shared package), not inside this app.
 
 ## Getting Started
 
@@ -86,8 +94,12 @@ The container serves the built static assets via nginx on port 80.
 
 ## Adding shadcn/ui Components
 
+UI primitives belong in `packages/ui`, not in this app. Add new components there:
+
 ```bash
+# From the repo root
+cd packages/ui
 pnpm dlx shadcn@latest add button
 ```
 
-Components are placed in `src/shared/ui/`.
+Then export the new component from `packages/ui/src/index.ts`.

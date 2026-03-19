@@ -7,7 +7,7 @@ import (
 	"github.com/kleff/go-common/domain"
 )
 
-// JSON writes v as an indented JSON response with the given status code.
+// JSON writes v as a JSON response with the given status code.
 func JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
