@@ -1,21 +1,93 @@
-# React + TypeScript + Vite + shadcn/ui
+# Dashboard
 
-This is a template for a new Vite project with React, TypeScript, and shadcn/ui.
+React frontend for the Kleff platform. Provides the main user interface for managing game servers, billing, and account settings.
 
-## Adding components
+## Tech Stack
 
-To add components to your app, run the following command:
+- **Framework:** React 19 + Vite 7
+- **Language:** TypeScript 5.9
+- **Styling:** Tailwind CSS 4 + shadcn/ui + Radix UI
+- **Routing:** React Router 7
+- **Auth:** OIDC via `react-oidc-context`
+- **Data Fetching:** Axios + TanStack Query 5
+- **Tables:** TanStack Table 8
+- **Charts:** Recharts 2
+
+## Project Structure
+
+```
+src/
+├── app/            # App-level setup (providers, global styles)
+├── features/       # Feature modules (auth, etc.)
+│   └── auth/       # OIDC auth — context, hooks, types, UI
+├── pages/          # Route-level page components
+│   └── dashboard/  # Main dashboard page
+└── shared/         # Cross-feature utilities
+    ├── api/        # Axios client & API helpers
+    ├── config/     # App configuration (env vars)
+    ├── lib/        # General utility functions
+    └── ui/         # Shared UI primitives (shadcn components)
+```
+
+## Getting Started
 
 ```bash
-npx shadcn@latest add button
+# From the repo root
+pnpm install
+
+# Copy environment variables
+cp .env.example .env
+
+# Start dev server
+pnpm --filter dashboard dev
 ```
 
-This will place the ui components in the `src/components` directory.
+The dev server runs at `http://localhost:5173` by default.
 
-## Using components
+## Environment Variables
 
-To use the components in your app, import them as follows:
+Copy `.env.example` to `.env` and fill in the values:
 
-```tsx
-import { Button } from "@/components/ui/button"
+```env
+VITE_OIDC_AUTHORITY=    # OIDC provider base URL (e.g. https://auth.example.com/realms/kleff)
+VITE_OIDC_CLIENT_ID=    # OIDC client ID registered with the provider
+VITE_API_BASE_URL=      # Backend API base URL (e.g. http://localhost:8080)
 ```
+
+> **Note:** All `VITE_` variables are baked into the bundle at build time. For Docker/production builds, pass them as build arguments.
+
+## Scripts
+
+| Command | Description |
+|---|---|
+| `pnpm dev` | Start development server with HMR |
+| `pnpm build` | Type-check and build for production |
+| `pnpm preview` | Serve the production build locally |
+| `pnpm lint` | Run ESLint |
+| `pnpm format` | Format with Prettier |
+| `pnpm typecheck` | Run TypeScript compiler without emitting |
+
+## Docker
+
+Build and run the dashboard container (from the repo root):
+
+```bash
+docker build \
+  --build-arg VITE_OIDC_AUTHORITY=https://auth.example.com/realms/kleff \
+  --build-arg VITE_OIDC_CLIENT_ID=kleff-dashboard \
+  --build-arg VITE_API_BASE_URL=https://api.example.com \
+  -f apps/dashboard/Dockerfile \
+  -t kleff-dashboard .
+
+docker run -p 3000:80 kleff-dashboard
+```
+
+The container serves the built static assets via nginx on port 80.
+
+## Adding shadcn/ui Components
+
+```bash
+pnpm dlx shadcn@latest add button
+```
+
+Components are placed in `src/shared/ui/`.
