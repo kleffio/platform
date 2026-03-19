@@ -1,432 +1,301 @@
-import { useMemo, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/shared/ui/alert";
-import { Avatar, AvatarFallback, AvatarImage } from "@/shared/ui/avatar";
-import { Badge } from "@/shared/ui/badge";
-import { Button } from "@/shared/ui/button";
-import { ButtonGroup } from "@/shared/ui/button-group";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
+import { useState } from "react";
+import type { GameServer, Invoice, Subscription } from "@kleff/shared-types";
 import {
-    Carousel,
-    CarouselContent,
-    CarouselItem,
-    CarouselNext,
-    CarouselPrevious,
-} from "@/shared/ui/carousel";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/shared/ui/chart";
-import { Checkbox } from "@/shared/ui/checkbox";
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/shared/ui/collapsible";
-import {
-    ContextMenu,
-    ContextMenuContent,
-    ContextMenuItem,
-    ContextMenuTrigger,
-} from "@/shared/ui/context-menu";
-import {
-    Drawer,
-    DrawerContent,
-    DrawerDescription,
-    DrawerFooter,
-    DrawerHeader,
-    DrawerTitle,
-    DrawerTrigger,
-} from "@/shared/ui/drawer";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui/empty";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/shared/ui/field";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/shared/ui/hover-card";
-import { Input } from "@/shared/ui/input";
-import { Item, ItemDescription, ItemTitle } from "@/shared/ui/item";
-import { Label } from "@/shared/ui/label";
-import {
-    Menubar,
-    MenubarContent,
-    MenubarItem,
-    MenubarMenu,
-    MenubarTrigger,
-} from "@/shared/ui/menubar";
-import {
-    Pagination,
-    PaginationContent,
-    PaginationItem,
-    PaginationLink,
-    PaginationNext,
-    PaginationPrevious,
-} from "@/shared/ui/pagination";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/shared/ui/popover";
-import { Progress } from "@/shared/ui/progress";
-import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
-import { ScrollArea } from "@/shared/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/ui/select";
-import { Separator } from "@/shared/ui/separator";
-import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
-} from "@/shared/ui/sheet";
-import { Skeleton } from "@/shared/ui/skeleton";
-import { Slider } from "@/shared/ui/slider";
-import { toast } from "sonner";
-import { Toaster } from "@/shared/ui/sonner";
-import { Switch } from "@/shared/ui/switch";
-import {
+    // Domain components
+    MetricCard,
+    PlanBadge,
+    RegionBadge,
+    ServerCard,
+    StatusBadge,
+    // Primitives
+    Alert,
+    AlertDescription,
+    AlertTitle,
+    Badge,
+    Button,
+    Card,
+    CardContent,
+    CardDescription,
+    CardHeader,
+    CardTitle,
+    ChartContainer,
+    ChartTooltip,
+    ChartTooltipContent,
+    Separator,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
     Tabs,
     TabsContent,
     TabsList,
     TabsTrigger,
-} from "@/shared/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/shared/ui/table";
+    Toaster,
+} from "@kleff/ui";
 import { ResponsiveContainer, BarChart, Bar, XAxis, CartesianGrid } from "recharts";
-import { Bell, ChevronDown, Database, Server, Shield, Sparkles } from "lucide-react";
+import { Activity, AlertTriangle, Server, Users } from "lucide-react";
+import { toast } from "sonner";
 
-const chartData = [
-    { name: "Mon", deployments: 12 },
-    { name: "Tue", deployments: 18 },
-    { name: "Wed", deployments: 9 },
-    { name: "Thu", deployments: 22 },
-    { name: "Fri", deployments: 16 },
+// ─── Mock data ────────────────────────────────────────────────────────────────
+
+const MOCK_SERVERS: GameServer[] = [
+    {
+        id: "srv-001",
+        organizationId: "org-001",
+        name: "mc-survival-na",
+        gameType: "Minecraft",
+        region: "us-east-1",
+        status: "running",
+        plan: { id: "plan-pro", tier: "pro", name: "Pro", vcpu: 4, memoryGb: 8, storageGb: 100, bandwidthGb: 2000, maxPlayers: 50, pricePerHour: 0.12 },
+        resources: { cpuPercent: 42, memoryPercent: 67, diskPercent: 23, networkInMbps: 12, networkOutMbps: 8 },
+        ipAddress: "34.201.12.88",
+        port: 25565,
+        currentPlayers: 18,
+        createdAt: "2024-11-01T00:00:00Z",
+        updatedAt: "2025-03-18T10:00:00Z",
+        lastStartedAt: "2025-03-18T08:00:00Z",
+    },
+    {
+        id: "srv-002",
+        organizationId: "org-001",
+        name: "valheim-eu-pvp",
+        gameType: "Valheim",
+        region: "eu-central-1",
+        status: "running",
+        plan: { id: "plan-business", tier: "business", name: "Business", vcpu: 8, memoryGb: 16, storageGb: 250, bandwidthGb: 5000, maxPlayers: 100, pricePerHour: 0.28 },
+        resources: { cpuPercent: 71, memoryPercent: 55, diskPercent: 40, networkInMbps: 45, networkOutMbps: 22 },
+        ipAddress: "18.185.44.9",
+        port: 2456,
+        currentPlayers: 63,
+        createdAt: "2024-12-15T00:00:00Z",
+        updatedAt: "2025-03-18T10:00:00Z",
+        lastStartedAt: "2025-03-17T20:00:00Z",
+    },
+    {
+        id: "srv-003",
+        organizationId: "org-001",
+        name: "csgo-casual-ap",
+        gameType: "CS2",
+        region: "ap-southeast-1",
+        status: "stopped",
+        plan: { id: "plan-starter", tier: "starter", name: "Starter", vcpu: 2, memoryGb: 4, storageGb: 50, bandwidthGb: 500, maxPlayers: 20, pricePerHour: 0.05 },
+        currentPlayers: 0,
+        createdAt: "2025-01-10T00:00:00Z",
+        updatedAt: "2025-03-17T22:00:00Z",
+    },
+    {
+        id: "srv-004",
+        organizationId: "org-001",
+        name: "ark-rag-us",
+        gameType: "ARK: Survival Evolved",
+        region: "us-west-2",
+        status: "provisioning",
+        plan: { id: "plan-pro", tier: "pro", name: "Pro", vcpu: 4, memoryGb: 8, storageGb: 100, bandwidthGb: 2000, maxPlayers: 50, pricePerHour: 0.12 },
+        currentPlayers: 0,
+        createdAt: "2025-03-18T09:45:00Z",
+        updatedAt: "2025-03-18T09:45:00Z",
+    },
+    {
+        id: "srv-005",
+        organizationId: "org-001",
+        name: "rust-official-eu",
+        gameType: "Rust",
+        region: "eu-west-1",
+        status: "crashed",
+        plan: { id: "plan-business", tier: "business", name: "Business", vcpu: 8, memoryGb: 16, storageGb: 250, bandwidthGb: 5000, maxPlayers: 100, pricePerHour: 0.28 },
+        resources: { cpuPercent: 0, memoryPercent: 0, diskPercent: 61, networkInMbps: 0, networkOutMbps: 0 },
+        currentPlayers: 0,
+        createdAt: "2025-02-01T00:00:00Z",
+        updatedAt: "2025-03-18T07:12:00Z",
+        lastStartedAt: "2025-03-18T06:00:00Z",
+    },
+    {
+        id: "srv-006",
+        organizationId: "org-001",
+        name: "terraria-jp",
+        gameType: "Terraria",
+        region: "ap-northeast-1",
+        status: "running",
+        plan: { id: "plan-free", tier: "free", name: "Free", vcpu: 1, memoryGb: 1, storageGb: 10, bandwidthGb: 100, maxPlayers: 8, pricePerHour: 0 },
+        resources: { cpuPercent: 8, memoryPercent: 31, diskPercent: 5, networkInMbps: 1, networkOutMbps: 1 },
+        currentPlayers: 3,
+        createdAt: "2025-03-01T00:00:00Z",
+        updatedAt: "2025-03-18T10:00:00Z",
+        lastStartedAt: "2025-03-18T09:00:00Z",
+    },
 ];
 
-const chartConfig = {
-    deployments: {
-        label: "Deployments",
+const MOCK_SUBSCRIPTION: Subscription = {
+    id: "sub-001",
+    organizationId: "org-001",
+    plan: {
+        id: "plan-business",
+        tier: "business",
+        name: "Business",
+        description: "For serious hosting operations",
+        pricePerMonth: 149,
+        pricePerYear: 1490,
+        features: ["Up to 20 game servers", "Priority support", "Custom domains", "Advanced analytics", "DDoS protection"],
+        maxGameServers: 20,
+        maxTeamMembers: 15,
+        supportLevel: "priority",
+        isPopular: true,
     },
+    status: "active",
+    interval: "monthly",
+    currentPeriodStart: "2025-03-01T00:00:00Z",
+    currentPeriodEnd: "2025-04-01T00:00:00Z",
+    cancelAtPeriodEnd: false,
+    createdAt: "2024-11-01T00:00:00Z",
+    updatedAt: "2025-03-01T00:00:00Z",
 };
 
+const MOCK_INVOICES: Invoice[] = [
+    {
+        id: "inv-003", organizationId: "org-001", subscriptionId: "sub-001",
+        status: "paid", number: "INV-2025-003",
+        lines: [{ id: "li-1", description: "Business Plan — March 2025", quantity: 1, unitAmount: 14900, totalAmount: 14900 }],
+        subtotal: 14900, tax: 1937, total: 16837, currency: "usd",
+        paidAt: "2025-03-01T10:00:00Z", createdAt: "2025-03-01T00:00:00Z",
+    },
+    {
+        id: "inv-002", organizationId: "org-001", subscriptionId: "sub-001",
+        status: "paid", number: "INV-2025-002",
+        lines: [{ id: "li-2", description: "Business Plan — February 2025", quantity: 1, unitAmount: 14900, totalAmount: 14900 }],
+        subtotal: 14900, tax: 1937, total: 16837, currency: "usd",
+        paidAt: "2025-02-01T10:00:00Z", createdAt: "2025-02-01T00:00:00Z",
+    },
+    {
+        id: "inv-001", organizationId: "org-001", subscriptionId: "sub-001",
+        status: "open", number: "INV-2025-001",
+        lines: [{ id: "li-3", description: "Business Plan — January 2025", quantity: 1, unitAmount: 14900, totalAmount: 14900 }],
+        subtotal: 14900, tax: 1937, total: 16837, currency: "usd",
+        createdAt: "2025-01-01T00:00:00Z",
+    },
+];
+
+const deploymentChartData = [
+    { day: "Mon", deployments: 4 },
+    { day: "Tue", deployments: 7 },
+    { day: "Wed", deployments: 3 },
+    { day: "Thu", deployments: 9 },
+    { day: "Fri", deployments: 6 },
+    { day: "Sat", deployments: 2 },
+    { day: "Sun", deployments: 1 },
+];
+
+const chartConfig = { deployments: { label: "Deployments" } };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatCents(cents: number, currency = "usd") {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(cents / 100);
+}
+
+function formatDate(iso: string) {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-    const [progress, setProgress] = useState(64);
-    const [cpuLimit, setCpuLimit] = useState([45]);
-    const [emailEnabled, setEmailEnabled] = useState(true);
-    const [agreed, setAgreed] = useState(true);
-    const stats = useMemo(
-        () => [
-            { title: "Active Nodes", value: "12", icon: Server },
-            { title: "Protected Apps", value: "38", icon: Shield },
-            { title: "Databases", value: "24", icon: Database },
-        ],
-        []
-    );
+    const [servers, setServers] = useState<GameServer[]>(MOCK_SERVERS);
+
+    const runningCount = servers.filter((s) => s.status === "running").length;
+    const crashedServers = servers.filter((s) => s.status === "crashed" || s.status === "error");
+    const totalPlayers = servers.reduce((sum, s) => sum + s.currentPlayers, 0);
+
+    function handleStart(id: string) {
+        setServers((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, status: "starting" as const, updatedAt: new Date().toISOString() } : s))
+        );
+        toast.success("Server starting", { description: `Starting ${servers.find((s) => s.id === id)?.name}…` });
+    }
+
+    function handleStop(id: string) {
+        setServers((prev) =>
+            prev.map((s) => (s.id === id ? { ...s, status: "stopping" as const, currentPlayers: 0, updatedAt: new Date().toISOString() } : s))
+        );
+        toast("Server stopping", { description: `Gracefully stopping ${servers.find((s) => s.id === id)?.name}…` });
+    }
 
     return (
         <div className="min-h-screen bg-zinc-950 text-zinc-50 p-6 md:p-10">
             <div className="mx-auto max-w-7xl space-y-8">
+
+                {/* ── Header ── */}
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div>
-                        <Badge className="mb-3">Kleff UI Showcase</Badge>
-                        <h1 className="text-4xl font-semibold tracking-tight">Premium dashboard component preview</h1>
-                        <p className="mt-2 max-w-3xl text-zinc-400">
-                            A quick all-in-one page using your generated shadcn components so you can verify styling,
-                            imports, and overall dashboard feel.
-                        </p>
+                        <Badge className="mb-3">Game Hosting Platform</Badge>
+                        <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
+                        <p className="mt-1 text-zinc-400">Manage your hosted game servers across all regions.</p>
                     </div>
-
-                    <div className="flex flex-wrap gap-3">
-                        <Button variant="outline">Secondary action</Button>
-                        <Button onClick={() => toast("Deployment queued", { description: "Your app is being prepared." })}>
-                            Trigger toast
-                        </Button>
-                    </div>
+                    <Button onClick={() => toast.success("Coming soon", { description: "Server provisioning UI is on the roadmap." })}>
+                        <Server className="mr-2 h-4 w-4" />
+                        New server
+                    </Button>
                 </div>
 
-                <Menubar className="bg-zinc-900 border-zinc-800">
-                    <MenubarMenu>
-                        <MenubarTrigger>Platform</MenubarTrigger>
-                        <MenubarContent>
-                            <MenubarItem>Overview</MenubarItem>
-                            <MenubarItem>Projects</MenubarItem>
-                        </MenubarContent>
-                    </MenubarMenu>
-                    <MenubarMenu>
-                        <MenubarTrigger>Infrastructure</MenubarTrigger>
-                        <MenubarContent>
-                            <MenubarItem>Nodes</MenubarItem>
-                            <MenubarItem>Regions</MenubarItem>
-                        </MenubarContent>
-                    </MenubarMenu>
-                    <MenubarMenu>
-                        <MenubarTrigger>Billing</MenubarTrigger>
-                        <MenubarContent>
-                            <MenubarItem>Invoices</MenubarItem>
-                            <MenubarItem>Usage</MenubarItem>
-                        </MenubarContent>
-                    </MenubarMenu>
-                </Menubar>
+                {/* ── Crashed server alert ── */}
+                {crashedServers.length > 0 && (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>{crashedServers.length} server{crashedServers.length > 1 ? "s" : ""} need attention</AlertTitle>
+                        <AlertDescription>
+                            {crashedServers.map((s) => s.name).join(", ")} {crashedServers.length > 1 ? "have" : "has"} crashed and may require a restart.
+                        </AlertDescription>
+                    </Alert>
+                )}
 
-                <Alert>
-                    <Sparkles className="h-4 w-4" />
-                    <AlertTitle>Kleff premium theme ready</AlertTitle>
-                    <AlertDescription>
-                        This page is only a component playground, but it already mirrors a premium dark dashboard layout.
-                    </AlertDescription>
-                </Alert>
-
-                <div className="grid gap-6 lg:grid-cols-3">
-                    {stats.map((stat) => {
-                        const Icon = stat.icon;
-                        return (
-                            <Card key={stat.title} className="bg-zinc-900/80 border-zinc-800 rounded-2xl">
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                                    <div>
-                                        <CardTitle className="text-sm text-zinc-400">{stat.title}</CardTitle>
-                                        <CardDescription>Cluster snapshot</CardDescription>
-                                    </div>
-                                    <div className="rounded-xl bg-zinc-800 p-2">
-                                        <Icon className="h-4 w-4 text-amber-400" />
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-3xl font-semibold">{stat.value}</p>
-                                </CardContent>
-                            </Card>
-                        );
-                    })}
+                {/* ── Metric cards ── */}
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <MetricCard label="Total Servers" value={servers.length} icon={<Server className="h-4 w-4" />} />
+                    <MetricCard
+                        label="Running"
+                        value={runningCount}
+                        icon={<Activity className="h-4 w-4" />}
+                        delta={{ value: `${servers.length - runningCount} offline`, direction: servers.length - runningCount > 0 ? "down" : "neutral" }}
+                    />
+                    <MetricCard
+                        label="Players Online"
+                        value={totalPlayers}
+                        icon={<Users className="h-4 w-4" />}
+                        delta={{ value: "+12 vs yesterday", direction: "up" }}
+                    />
+                    <MetricCard
+                        label="Est. Monthly Cost"
+                        value={formatCents(MOCK_SUBSCRIPTION.plan.pricePerMonth * 100)}
+                        delta={{ value: "Business plan", direction: "neutral" }}
+                    />
                 </div>
 
-                <Tabs defaultValue="inputs" className="space-y-6">
+                {/* ── Tabs ── */}
+                <Tabs defaultValue="overview" className="space-y-6">
                     <TabsList className="grid w-full grid-cols-4">
-                        <TabsTrigger value="inputs">Inputs</TabsTrigger>
-                        <TabsTrigger value="navigation">Navigation</TabsTrigger>
-                        <TabsTrigger value="display">Display</TabsTrigger>
-                        <TabsTrigger value="feedback">Feedback</TabsTrigger>
+                        <TabsTrigger value="overview">Overview</TabsTrigger>
+                        <TabsTrigger value="servers">Servers</TabsTrigger>
+                        <TabsTrigger value="billing">Billing</TabsTrigger>
+                        <TabsTrigger value="components">Components</TabsTrigger>
                     </TabsList>
 
-                    <TabsContent value="inputs" className="space-y-6">
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Form controls</CardTitle>
-                                    <CardDescription>Core input components in one place.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-5">
-                                    <Field>
-                                        <FieldLabel>Project name</FieldLabel>
-                                        <FieldContent>
-                                            <Input defaultValue="kleff-platform" />
-                                        </FieldContent>
-                                        <FieldDescription>This input uses your generated input component.</FieldDescription>
-                                    </Field>
-
-                                    <div className="grid gap-4 md:grid-cols-2">
-                                        <div className="space-y-2">
-                                            <Label>Region</Label>
-                                            <Select defaultValue="ca-east">
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select region" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="ca-east">Canada East</SelectItem>
-                                                    <SelectItem value="us-east">US East</SelectItem>
-                                                    <SelectItem value="eu-west">EU West</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label>Plan</Label>
-                                            <RadioGroup defaultValue="premium" className="space-y-2">
-                                                <div className="flex items-center gap-2">
-                                                    <RadioGroupItem value="starter" id="starter" />
-                                                    <Label htmlFor="starter">Starter</Label>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <RadioGroupItem value="premium" id="premium" />
-                                                    <Label htmlFor="premium">Premium</Label>
-                                                </div>
-                                            </RadioGroup>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <Label>CPU limit</Label>
-                                            <Badge variant="outline">{cpuLimit[0]}%</Badge>
-                                        </div>
-                                        <Slider value={cpuLimit} onValueChange={setCpuLimit} max={100} step={1} />
-                                    </div>
-
-                                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between rounded-xl border border-zinc-800 p-4">
-                                        <div className="space-y-1">
-                                            <p className="font-medium">Email alerts</p>
-                                            <p className="text-sm text-zinc-400">Notify owners when deployments fail.</p>
-                                        </div>
-                                        <Switch checked={emailEnabled} onCheckedChange={setEmailEnabled} />
-                                    </div>
-
-                                    <div className="flex items-center gap-3">
-                                        <Checkbox checked={agreed} onCheckedChange={(v) => setAgreed(Boolean(v))} />
-                                        <span className="text-sm text-zinc-300">Apply configuration immediately after save.</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Interactive overlays</CardTitle>
-                                    <CardDescription>Popover, hover card, dropdown, drawer, sheet and context menu.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="flex flex-wrap gap-3">
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="outline">Open popover</Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-72">
-                                            Quick actions and contextual controls can live here.
-                                        </PopoverContent>
-                                    </Popover>
-
-                                    <HoverCard>
-                                        <HoverCardTrigger asChild>
-                                            <Button variant="outline">Hover for details</Button>
-                                        </HoverCardTrigger>
-                                        <HoverCardContent>
-                                            Hover cards are useful for lightweight summaries and metadata previews.
-                                        </HoverCardContent>
-                                    </HoverCard>
-
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="outline">
-                                                Menu <ChevronDown className="ml-2 h-4 w-4" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent>
-                                            <DropdownMenuLabel>Deployment</DropdownMenuLabel>
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem>Redeploy</DropdownMenuItem>
-                                            <DropdownMenuItem>Pause</DropdownMenuItem>
-                                            <DropdownMenuItem>Delete</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-
-                                    <Drawer>
-                                        <DrawerTrigger asChild>
-                                            <Button variant="outline">Open drawer</Button>
-                                        </DrawerTrigger>
-                                        <DrawerContent>
-                                            <DrawerHeader>
-                                                <DrawerTitle>Mobile style drawer</DrawerTitle>
-                                                <DrawerDescription>Useful for compact workflows and settings panels.</DrawerDescription>
-                                            </DrawerHeader>
-                                            <DrawerFooter>
-                                                <Button>Confirm</Button>
-                                            </DrawerFooter>
-                                        </DrawerContent>
-                                    </Drawer>
-
-                                    <Sheet>
-                                        <SheetTrigger asChild>
-                                            <Button variant="outline">Open sheet</Button>
-                                        </SheetTrigger>
-                                        <SheetContent>
-                                            <SheetHeader>
-                                                <SheetTitle>Right-side inspector</SheetTitle>
-                                                <SheetDescription>Perfect for logs, resource details, and quick edits.</SheetDescription>
-                                            </SheetHeader>
-                                        </SheetContent>
-                                    </Sheet>
-
-                                    <ContextMenu>
-                                        <ContextMenuTrigger asChild>
-                                            <div className="rounded-xl border border-dashed border-zinc-700 px-4 py-3 text-sm text-zinc-400">
-                                                Right click this box
-                                            </div>
-                                        </ContextMenuTrigger>
-                                        <ContextMenuContent>
-                                            <ContextMenuItem>Restart container</ContextMenuItem>
-                                            <ContextMenuItem>Open logs</ContextMenuItem>
-                                        </ContextMenuContent>
-                                    </ContextMenu>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="navigation" className="space-y-6">
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Pagination and button groups</CardTitle>
-                                    <CardDescription>Typical dashboard controls.</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <ButtonGroup>
-                                        <Button variant="secondary">Overview</Button>
-                                        <Button variant="outline">Containers</Button>
-                                        <Button variant="outline">Logs</Button>
-                                    </ButtonGroup>
-
-                                    <Pagination>
-                                        <PaginationContent>
-                                            <PaginationItem>
-                                                <PaginationPrevious href="#" />
-                                            </PaginationItem>
-                                            <PaginationItem>
-                                                <PaginationLink href="#" isActive>
-                                                    1
-                                                </PaginationLink>
-                                            </PaginationItem>
-                                            <PaginationItem>
-                                                <PaginationLink href="#">2</PaginationLink>
-                                            </PaginationItem>
-                                            <PaginationItem>
-                                                <PaginationNext href="#" />
-                                            </PaginationItem>
-                                        </PaginationContent>
-                                    </Pagination>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Collapsible content</CardTitle>
-                                    <CardDescription>Compact detail panels for operators.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Collapsible>
-                                        <CollapsibleTrigger asChild>
-                                            <Button variant="outline">Toggle diagnostics</Button>
-                                        </CollapsibleTrigger>
-                                        <CollapsibleContent className="mt-4 rounded-xl border border-zinc-800 p-4 text-sm text-zinc-300">
-                                            Diagnostics: ingress healthy, database latency stable, queue backlog under threshold.
-                                        </CollapsibleContent>
-                                    </Collapsible>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="display" className="space-y-6">
+                    {/* ── Overview ── */}
+                    <TabsContent value="overview" className="space-y-6">
                         <div className="grid gap-6 xl:grid-cols-3">
                             <Card className="xl:col-span-2 rounded-2xl bg-zinc-900/80 border-zinc-800">
                                 <CardHeader>
-                                    <CardTitle>Chart</CardTitle>
-                                    <CardDescription>Using the chart wrapper with Recharts.</CardDescription>
+                                    <CardTitle>Deployments this week</CardTitle>
+                                    <CardDescription>Server deploys and restarts per day.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ChartContainer config={chartConfig} className="h-[280px] w-full">
+                                    <ChartContainer config={chartConfig} className="h-60 w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={chartData}>
+                                            <BarChart data={deploymentChartData}>
                                                 <CartesianGrid vertical={false} />
-                                                <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                                                <XAxis dataKey="day" tickLine={false} axisLine={false} />
                                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                                <Bar dataKey="deployments" radius={8} />
+                                                <Bar dataKey="deployments" radius={6} fill="#f5b517" />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </ChartContainer>
@@ -435,141 +304,254 @@ export default function DashboardPage() {
 
                             <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
                                 <CardHeader>
-                                    <CardTitle>Carousel</CardTitle>
-                                    <CardDescription>Good for onboarding or feature banners.</CardDescription>
+                                    <CardTitle>Service health</CardTitle>
+                                    <CardDescription>All servers at a glance.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <Carousel className="w-full">
-                                        <CarouselContent>
-                                            {["Compute", "Storage", "Networking"].map((item) => (
-                                                <CarouselItem key={item}>
-                                                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-8 text-center">
-                                                        <p className="text-sm text-zinc-400">Module</p>
-                                                        <p className="mt-2 text-2xl font-semibold">{item}</p>
-                                                    </div>
-                                                </CarouselItem>
-                                            ))}
-                                        </CarouselContent>
-                                        <CarouselPrevious />
-                                        <CarouselNext />
-                                    </Carousel>
+                                    <div className="space-y-3">
+                                        {servers.map((server) => (
+                                            <div key={server.id} className="flex items-center justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-medium text-zinc-200 truncate">{server.name}</p>
+                                                    <RegionBadge region={server.region} short className="mt-0.5" />
+                                                </div>
+                                                <StatusBadge status={server.status} showDot />
+                                            </div>
+                                        ))}
+                                    </div>
                                 </CardContent>
                             </Card>
                         </div>
 
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Item rows and table</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="space-y-3">
-                                        <Item>
-                                            <Bell className="h-4 w-4" />
-                                            <div>
-                                                <ItemTitle>Node maintenance scheduled</ItemTitle>
-                                                <ItemDescription>One worker node will reboot at 02:00.</ItemDescription>
-                                            </div>
-                                        </Item>
-                                        <Separator />
-                                        <Item>
-                                            <Shield className="h-4 w-4" />
-                                            <div>
-                                                <ItemTitle>WAF policy applied</ItemTitle>
-                                                <ItemDescription>Premium tenants are protected by the latest rule set.</ItemDescription>
-                                            </div>
-                                        </Item>
-                                    </div>
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>All servers</CardTitle>
+                                <CardDescription>Quick reference — switch to the Servers tab to manage.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Name</TableHead>
+                                            <TableHead>Game</TableHead>
+                                            <TableHead>Region</TableHead>
+                                            <TableHead>Plan</TableHead>
+                                            <TableHead>Status</TableHead>
+                                            <TableHead className="text-right">Players</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {servers.map((server) => (
+                                            <TableRow key={server.id}>
+                                                <TableCell className="font-mono text-sm">{server.name}</TableCell>
+                                                <TableCell>{server.gameType}</TableCell>
+                                                <TableCell><RegionBadge region={server.region} short /></TableCell>
+                                                <TableCell><PlanBadge tier={server.plan.tier} /></TableCell>
+                                                <TableCell><StatusBadge status={server.status} /></TableCell>
+                                                <TableCell className="text-right tabular-nums">
+                                                    {server.currentPlayers} / {server.plan.maxPlayers}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
 
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Service</TableHead>
-                                                <TableHead>Status</TableHead>
-                                                <TableHead>Region</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            <TableRow>
-                                                <TableCell>platform-api</TableCell>
-                                                <TableCell>Healthy</TableCell>
-                                                <TableCell>CA-East</TableCell>
-                                            </TableRow>
-                                            <TableRow>
-                                                <TableCell>dashboard</TableCell>
-                                                <TableCell>Healthy</TableCell>
-                                                <TableCell>CA-East</TableCell>
-                                            </TableRow>
-                                        </TableBody>
-                                    </Table>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Scroll area + avatars</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <ScrollArea className="h-64 rounded-xl border border-zinc-800 p-4">
-                                        <div className="space-y-4">
-                                            {Array.from({ length: 8 }).map((_, i) => (
-                                                <div key={i} className="flex items-center gap-3 rounded-xl bg-zinc-950 p-3">
-                                                    <Avatar>
-                                                        <AvatarImage src={`https://i.pravatar.cc/100?img=${i + 1}`} />
-                                                        <AvatarFallback>KF</AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <p className="font-medium">Operator {i + 1}</p>
-                                                        <p className="text-sm text-zinc-400">Reviewed deployment logs and metrics.</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </ScrollArea>
-                                </CardContent>
-                            </Card>
+                    {/* ── Servers ── */}
+                    <TabsContent value="servers" className="space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                            {servers.map((server) => (
+                                <ServerCard key={server.id} server={server} onStart={handleStart} onStop={handleStop} />
+                            ))}
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="feedback" className="space-y-6">
-                        <div className="grid gap-6 lg:grid-cols-3">
+                    {/* ── Billing ── */}
+                    <TabsContent value="billing" className="space-y-6">
+                        <div className="grid gap-6 lg:grid-cols-2">
                             <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Progress</CardTitle>
+                                <CardHeader className="flex flex-row items-start justify-between">
+                                    <div>
+                                        <CardTitle>Current subscription</CardTitle>
+                                        <CardDescription>Your active plan and billing details.</CardDescription>
+                                    </div>
+                                    <PlanBadge tier={MOCK_SUBSCRIPTION.plan.tier} />
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <Progress value={progress} />
-                                    <Button variant="outline" onClick={() => setProgress((p) => Math.min(p + 10, 100))}>
-                                        Increase progress
+                                    <div className="flex items-baseline gap-1">
+                                        <span className="text-3xl font-semibold">{formatCents(MOCK_SUBSCRIPTION.plan.pricePerMonth * 100)}</span>
+                                        <span className="text-zinc-400">/ month</span>
+                                    </div>
+                                    <Separator className="border-zinc-800" />
+                                    <ul className="space-y-2">
+                                        {MOCK_SUBSCRIPTION.plan.features.map((feature) => (
+                                            <li key={feature} className="flex items-center gap-2 text-sm text-zinc-300">
+                                                <span className="text-amber-400">✓</span>
+                                                {feature}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                    <Separator className="border-zinc-800" />
+                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                        <div><p className="text-zinc-500">Period start</p><p className="font-medium">{formatDate(MOCK_SUBSCRIPTION.currentPeriodStart)}</p></div>
+                                        <div><p className="text-zinc-500">Next billing</p><p className="font-medium">{formatDate(MOCK_SUBSCRIPTION.currentPeriodEnd)}</p></div>
+                                        <div><p className="text-zinc-500">Servers</p><p className="font-medium">{servers.length} / {MOCK_SUBSCRIPTION.plan.maxGameServers}</p></div>
+                                        <div><p className="text-zinc-500">Support</p><p className="font-medium capitalize">{MOCK_SUBSCRIPTION.plan.supportLevel}</p></div>
+                                    </div>
+                                    <Button variant="outline" className="w-full" onClick={() => toast("Coming soon", { description: "Plan management is on the roadmap." })}>
+                                        Manage plan
                                     </Button>
                                 </CardContent>
                             </Card>
 
                             <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
                                 <CardHeader>
-                                    <CardTitle>Skeleton loaders</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-3">
-                                    <Skeleton className="h-5 w-1/3" />
-                                    <Skeleton className="h-20 w-full" />
-                                    <Skeleton className="h-10 w-2/3" />
-                                </CardContent>
-                            </Card>
-
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
-                                <CardHeader>
-                                    <CardTitle>Empty state</CardTitle>
+                                    <CardTitle>Invoice history</CardTitle>
+                                    <CardDescription>Your recent billing statements.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <Empty>
-                                        <EmptyHeader>
-                                            <EmptyTitle>No deployments yet</EmptyTitle>
-                                            <EmptyDescription>Create your first workload to see activity here.</EmptyDescription>
-                                        </EmptyHeader>
-                                    </Empty>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Invoice</TableHead>
+                                                <TableHead>Date</TableHead>
+                                                <TableHead>Status</TableHead>
+                                                <TableHead className="text-right">Total</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {MOCK_INVOICES.map((invoice) => (
+                                                <TableRow key={invoice.id}>
+                                                    <TableCell className="font-mono text-xs">{invoice.number}</TableCell>
+                                                    <TableCell>{formatDate(invoice.createdAt)}</TableCell>
+                                                    <TableCell>
+                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                                                            invoice.status === "paid" ? "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20"
+                                                            : invoice.status === "open" ? "bg-amber-400/10 text-amber-400 ring-amber-400/20"
+                                                            : "bg-zinc-500/10 text-zinc-400 ring-zinc-500/20"
+                                                        }`}>
+                                                            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell className="text-right tabular-nums">{formatCents(invoice.total, invoice.currency)}</TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
                                 </CardContent>
                             </Card>
                         </div>
+                    </TabsContent>
+
+                    {/* ── Components showcase ── */}
+                    <TabsContent value="components" className="space-y-8">
+
+                        {/* StatusBadge — all 8 statuses */}
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>StatusBadge</CardTitle>
+                                <CardDescription>All GameServerStatus variants. Transitional states pulse.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex flex-wrap gap-3">
+                                <StatusBadge status="running" />
+                                <StatusBadge status="stopped" />
+                                <StatusBadge status="starting" />
+                                <StatusBadge status="stopping" />
+                                <StatusBadge status="restarting" />
+                                <StatusBadge status="provisioning" />
+                                <StatusBadge status="crashed" />
+                                <StatusBadge status="error" />
+                            </CardContent>
+                        </Card>
+
+                        {/* PlanBadge — all 5 tiers */}
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>PlanBadge</CardTitle>
+                                <CardDescription>All GameServerPlanTier variants.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="flex flex-wrap gap-3">
+                                <PlanBadge tier="free" />
+                                <PlanBadge tier="starter" />
+                                <PlanBadge tier="pro" />
+                                <PlanBadge tier="business" />
+                                <PlanBadge tier="enterprise" />
+                            </CardContent>
+                        </Card>
+
+                        {/* RegionBadge — all 8 regions, both modes */}
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>RegionBadge</CardTitle>
+                                <CardDescription>All 8 regions — full label and short mode.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="flex flex-wrap gap-2">
+                                    <RegionBadge region="us-east-1" />
+                                    <RegionBadge region="us-west-2" />
+                                    <RegionBadge region="eu-west-1" />
+                                    <RegionBadge region="eu-central-1" />
+                                    <RegionBadge region="ap-southeast-1" />
+                                    <RegionBadge region="ap-northeast-1" />
+                                    <RegionBadge region="ca-central-1" />
+                                    <RegionBadge region="sa-east-1" />
+                                </div>
+                                <p className="text-xs text-zinc-500">Short mode:</p>
+                                <div className="flex flex-wrap gap-2">
+                                    <RegionBadge region="us-east-1" short />
+                                    <RegionBadge region="eu-central-1" short />
+                                    <RegionBadge region="ap-northeast-1" short />
+                                    <RegionBadge region="sa-east-1" short />
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* MetricCard — all delta directions */}
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>MetricCard</CardTitle>
+                                <CardDescription>With icon, delta up/down/neutral, and plain.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                <MetricCard label="Running Servers" value={4} icon={<Server className="h-4 w-4" />} delta={{ value: "+1 today", direction: "up" }} />
+                                <MetricCard label="Crashed" value={1} icon={<AlertTriangle className="h-4 w-4" />} delta={{ value: "1 unresolved", direction: "down" }} />
+                                <MetricCard label="Players Online" value={84} icon={<Users className="h-4 w-4" />} delta={{ value: "same as yesterday", direction: "neutral" }} />
+                                <MetricCard label="Monthly Cost" value="$149.00" />
+                            </CardContent>
+                        </Card>
+
+                        {/* ServerCard — representative states */}
+                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <CardHeader>
+                                <CardTitle>ServerCard</CardTitle>
+                                <CardDescription>Running with resources, stopped, provisioning, and crashed.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                <ServerCard
+                                    server={MOCK_SERVERS[0]}
+                                    onStart={handleStart}
+                                    onStop={handleStop}
+                                />
+                                <ServerCard
+                                    server={MOCK_SERVERS[2]}
+                                    onStart={handleStart}
+                                    onStop={handleStop}
+                                />
+                                <ServerCard
+                                    server={MOCK_SERVERS[3]}
+                                    onStart={handleStart}
+                                    onStop={handleStop}
+                                />
+                                <ServerCard
+                                    server={MOCK_SERVERS[4]}
+                                    onStart={handleStart}
+                                    onStop={handleStop}
+                                />
+                            </CardContent>
+                        </Card>
+
                     </TabsContent>
                 </Tabs>
             </div>

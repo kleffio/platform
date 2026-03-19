@@ -1,4 +1,4 @@
-import { Toaster } from "@/shared/ui/sonner";
+import { Toaster } from "@kleff/ui";
 import type { ReactNode } from "react";
 
 export function ToastProvider({ children }: { children: ReactNode }) {
