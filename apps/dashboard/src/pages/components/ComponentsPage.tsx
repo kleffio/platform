@@ -32,7 +32,6 @@ import {
     TabsContent,
     TabsList,
     TabsTrigger,
-    Toaster,
 } from "@kleff/ui";
 import { ResponsiveContainer, BarChart, Bar, XAxis, CartesianGrid } from "recharts";
 import { Activity, AlertTriangle, Server, Users } from "lucide-react";
@@ -186,7 +185,7 @@ const deploymentChartData = [
     { day: "Sun", deployments: 1 },
 ];
 
-const chartConfig = { deployments: { label: "Deployments" } };
+const chartConfig = { deployments: { label: "Deployments", color: "var(--color-chart-1)" } };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -222,7 +221,7 @@ export default function ComponentsPage() {
     }
 
     return (
-        <div className="min-h-screen bg-zinc-950 text-zinc-50 p-6 md:p-10">
+        <div className="min-h-screen bg-background text-foreground p-6 md:p-10">
             <div className="mx-auto max-w-7xl space-y-8">
 
                 {/* ── Header ── */}
@@ -283,7 +282,7 @@ export default function ComponentsPage() {
                     {/* ── Overview ── */}
                     <TabsContent value="overview" className="space-y-6">
                         <div className="grid gap-6 xl:grid-cols-3">
-                            <Card className="xl:col-span-2 rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <Card className="xl:col-span-2 rounded-2xl bg-card border-border">
                                 <CardHeader>
                                     <CardTitle>Deployments this week</CardTitle>
                                     <CardDescription>Server deploys and restarts per day.</CardDescription>
@@ -295,14 +294,14 @@ export default function ComponentsPage() {
                                                 <CartesianGrid vertical={false} />
                                                 <XAxis dataKey="day" tickLine={false} axisLine={false} />
                                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                                <Bar dataKey="deployments" radius={6} fill="#f5b517" />
+                                                <Bar dataKey="deployments" radius={6} fill="var(--color-deployments)" />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </ChartContainer>
                                 </CardContent>
                             </Card>
 
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <Card className="rounded-2xl bg-card border-border">
                                 <CardHeader>
                                     <CardTitle>Service health</CardTitle>
                                     <CardDescription>All servers at a glance.</CardDescription>
@@ -323,7 +322,7 @@ export default function ComponentsPage() {
                             </Card>
                         </div>
 
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>All servers</CardTitle>
                                 <CardDescription>Quick reference — switch to the Servers tab to manage.</CardDescription>
@@ -371,7 +370,7 @@ export default function ComponentsPage() {
                     {/* ── Billing ── */}
                     <TabsContent value="billing" className="space-y-6">
                         <div className="grid gap-6 lg:grid-cols-2">
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <Card className="rounded-2xl bg-card border-border">
                                 <CardHeader className="flex flex-row items-start justify-between">
                                     <div>
                                         <CardTitle>Current subscription</CardTitle>
@@ -406,7 +405,7 @@ export default function ComponentsPage() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                            <Card className="rounded-2xl bg-card border-border">
                                 <CardHeader>
                                     <CardTitle>Invoice history</CardTitle>
                                     <CardDescription>Your recent billing statements.</CardDescription>
@@ -449,7 +448,7 @@ export default function ComponentsPage() {
                     <TabsContent value="components" className="space-y-8">
 
                         {/* StatusBadge — all 8 statuses */}
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>StatusBadge</CardTitle>
                                 <CardDescription>All GameServerStatus variants. Transitional states pulse.</CardDescription>
@@ -467,7 +466,7 @@ export default function ComponentsPage() {
                         </Card>
 
                         {/* PlanBadge — all 5 tiers */}
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>PlanBadge</CardTitle>
                                 <CardDescription>All GameServerPlanTier variants.</CardDescription>
@@ -482,7 +481,7 @@ export default function ComponentsPage() {
                         </Card>
 
                         {/* RegionBadge — all 8 regions, both modes */}
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>RegionBadge</CardTitle>
                                 <CardDescription>All 8 regions — full label and short mode.</CardDescription>
@@ -509,7 +508,7 @@ export default function ComponentsPage() {
                         </Card>
 
                         {/* MetricCard — all delta directions */}
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>MetricCard</CardTitle>
                                 <CardDescription>With icon, delta up/down/neutral, and plain.</CardDescription>
@@ -523,7 +522,7 @@ export default function ComponentsPage() {
                         </Card>
 
                         {/* ServerCard — representative states */}
-                        <Card className="rounded-2xl bg-zinc-900/80 border-zinc-800">
+                        <Card className="rounded-2xl bg-card border-border">
                             <CardHeader>
                                 <CardTitle>ServerCard</CardTitle>
                                 <CardDescription>Running with resources, stopped, provisioning, and crashed.</CardDescription>
@@ -556,7 +555,6 @@ export default function ComponentsPage() {
                 </Tabs>
             </div>
 
-            <Toaster />
         </div>
     );
 }

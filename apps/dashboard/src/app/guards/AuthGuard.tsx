@@ -21,7 +21,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   if (auth.error) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-2">
           <p className="text-sm font-medium text-red-400">Authentication error</p>
           <p className="text-xs text-zinc-500">{auth.error.message}</p>
@@ -40,7 +40,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
 function AuthLoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="w-48 space-y-3">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
