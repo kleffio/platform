@@ -6,7 +6,6 @@ rules:
     max: 256
     level: warning
   truthy:
-    forbid-implicit-flow-mapping: false
     allowed-values: ["true", "false", "on"]
     check-keys: false
   comments:
