@@ -89,6 +89,7 @@ export function ServerCard({ server, onStart, onStop, onSelect, className = "" }
         <div className="flex items-center gap-2">
           {isRunning && onStop && (
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); onStop(server.id); }}
               disabled={isTransitioning}
               className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 transition-colors"
@@ -98,6 +99,7 @@ export function ServerCard({ server, onStart, onStop, onSelect, className = "" }
           )}
           {!isRunning && onStart && (
             <button
+              type="button"
               onClick={(e) => { e.stopPropagation(); onStart(server.id); }}
               disabled={isTransitioning}
               className="rounded-md px-2.5 py-1 text-xs font-medium text-zinc-900 bg-amber-400 hover:bg-amber-300 disabled:opacity-40 transition-colors"

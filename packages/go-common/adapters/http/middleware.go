@@ -73,8 +73,13 @@ func CORS(allowedOrigins ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 
-			if len(originSet) == 0 || originSet[origin] {
+			if len(originSet) == 0 {
+				// No restrictions — allow all origins.
+				w.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if origin != "" && originSet[origin] {
+				// Echo the matched origin and mark the response as varying by Origin.
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
 			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id")

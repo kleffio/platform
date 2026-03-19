@@ -3,15 +3,9 @@ import { AuthGuard } from "@/app/guards/AuthGuard";
 import { GuestGuard } from "@/app/guards/GuestGuard";
 import DashboardPage from "@/pages/dashboard/DashboardPage";
 import ComponentsPage from "@/pages/components/ComponentsPage";
+import { ROUTES } from "./routes";
 
-export const ROUTES = {
-  HOME: "/",
-  DASHBOARD: "/dashboard",
-  COMPONENTS: "/components",
-  AUTH_CALLBACK: "/auth/callback",
-  AUTH_SIGNIN: "/auth/signin",
-  ERROR_DEACTIVATED: "/error/deactivated",
-} as const;
+export { ROUTES } from "./routes";
 
 const router = createBrowserRouter([
   {

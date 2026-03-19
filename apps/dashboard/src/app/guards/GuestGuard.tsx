@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 import { Skeleton } from "@kleff/ui";
+import { ROUTES } from "@/app/router/routes";
 
 interface GuestGuardProps {
   children: ReactNode;
@@ -18,7 +19,7 @@ export function GuestGuard({ children }: GuestGuardProps) {
 
   useEffect(() => {
     if (auth.isAuthenticated) {
-      navigate("/dashboard", { replace: true });
+      navigate(ROUTES.DASHBOARD, { replace: true });
     }
   }, [auth.isAuthenticated, navigate]);
 

@@ -1,9 +1,19 @@
-import { useTheme } from "@/app/providers/theme-provider"
+import * as React from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
+type Theme = "light" | "dark" | "system";
+
+function getDocumentTheme(): Theme {
+  if (typeof document === "undefined") return "system";
+  const root = document.documentElement;
+  if (root.classList.contains("dark")) return "dark";
+  if (root.classList.contains("light")) return "light";
+  return "system";
+}
+
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  const theme = getDocumentTheme();
 
   return (
     <Sonner

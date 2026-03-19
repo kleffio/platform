@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useAuth as useOidcAuth } from "react-oidc-context";
 import { Skeleton } from "@kleff/ui";
 
@@ -14,8 +14,16 @@ interface AuthGuardProps {
  */
 export function AuthGuard({ children }: AuthGuardProps) {
   const auth = useOidcAuth();
+  const [redirecting, setRedirecting] = useState(false);
 
-  if (auth.isLoading) {
+  useEffect(() => {
+    if (!auth.isLoading && !auth.error && !auth.isAuthenticated && !redirecting) {
+      setRedirecting(true);
+      auth.signinRedirect();
+    }
+  }, [auth, redirecting]);
+
+  if (auth.isLoading || redirecting) {
     return <AuthLoadingScreen />;
   }
 
@@ -31,7 +39,6 @@ export function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (!auth.isAuthenticated) {
-    auth.signinRedirect();
     return <AuthLoadingScreen />;
   }
 
