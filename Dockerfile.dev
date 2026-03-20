@@ -1,0 +1,21 @@
+# Development image — uses Air for live reload on source changes.
+# Source is volume-mounted by docker compose at /build.
+FROM golang:1.23-alpine
+
+RUN apk add --no-cache git curl ca-certificates
+
+# Install Air (live reload) and Delve (debugger)
+RUN go install github.com/air-verse/air@latest && \
+    go install github.com/go-delve/delve/cmd/dlv@latest
+
+WORKDIR /build
+
+# Pre-download workspace dependencies for faster first-run.
+COPY go.work ./
+COPY go.mod ./
+COPY packages/go.mod packages/
+RUN go work sync
+
+EXPOSE 8080 2345
+
+CMD ["air", "-c", ".air.toml"]
