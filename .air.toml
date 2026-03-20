@@ -1,0 +1,25 @@
+root = "."
+tmp_dir = "/tmp/air"
+
+[build]
+  cmd = "go build -o /tmp/air/platform ./cmd/api/"
+  bin = "/tmp/air/platform"
+  full_bin = "/tmp/air/platform"
+  include_ext = ["go"]
+  exclude_dir = ["infra", "migrations", "api"]
+  delay = 500
+  kill_delay = "1s"
+  rerun = false
+
+[log]
+  time = false
+  main_only = true
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

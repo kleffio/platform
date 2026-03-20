@@ -1,8 +1,9 @@
 go 1.23
 
 use (
-	./packages/go-common
-	./services/billing-service
-	./services/gameserver-service
-	./services/identity-service
+	// Platform control plane API (modular monolith)
+	.
+
+	// Shared Go library
+	./packages
 )
