@@ -1,0 +1,33 @@
+---
+name: PR Title Check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: PR Title Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feature
+            feat
+            bugfix
+            fix
+            chore
+            docs
+            doc
+            refactor
+            security
+            sec
+            tests
+            test
+          subjectPattern: "^[A-Z0-9].+"
+          subjectPatternError: "Start the subject with a capital letter."
