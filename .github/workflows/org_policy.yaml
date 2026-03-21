@@ -50,3 +50,4 @@ jobs:
     uses: kleffio/.github/.github/workflows/_label-sync.yml@main
     with:
       unified_path: configs/labels.json
+      

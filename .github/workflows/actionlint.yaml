@@ -11,3 +11,4 @@ jobs:
   actionlint:
     name: Action Lint
     uses: kleffio/.github/.github/workflows/_actionlint.yml@main
+    

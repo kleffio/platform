@@ -11,3 +11,4 @@ jobs:
   golangci-lint:
     name: Go Lint
     uses: kleffio/.github/.github/workflows/_golangci-lint.yml@main
+    
