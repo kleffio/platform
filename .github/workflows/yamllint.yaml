@@ -11,4 +11,3 @@ jobs:
   yamllint:
     name: YAML Lint
     uses: kleffio/.github/.github/workflows/_yaml-lint.yml@main
-    
