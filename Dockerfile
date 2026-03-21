@@ -25,14 +25,16 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     ./cmd/api/
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-# distroless/static has no shell, package manager, or libc — minimal attack surface.
-FROM gcr.io/distroless/static-debian12:nonroot
+# alpine provides a minimal shell and wget so Docker health checks work.
+FROM alpine:3
 
-# CA certificates and timezone data from the builder
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+RUN apk add --no-cache ca-certificates tzdata wget
+
+RUN addgroup -S app && adduser -S -G app app
 
 COPY --from=builder /platform /platform
+
+USER app
 
 EXPOSE 8080
 
