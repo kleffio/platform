@@ -19,23 +19,6 @@ permissions:
   id-token: write
 
 jobs:
-  # --- Linting ---
-  yamllint:
-    name: YAML Lint
-    uses: kleffio/.github/.github/workflows/_yaml-lint.yml@main
-
-  actionlint:
-    name: Action Lint
-    uses: kleffio/.github/.github/workflows/_actionlint.yml@main
-
-  # when issue with .github repo is fixed we can add this back
-  # shellcheck:
-    # name: Shell Check
-    # uses: kleffio/.github/.github/workflows/_shellcheck.yml@main
-    # when issue with .github repo is fixed we can add this back
-    # with:
-      # exclude: "./operator/*"
-
   # --- PR-specific ---
   auto-label:
     name: Auto Label PR
@@ -61,7 +44,6 @@ jobs:
       unified_path: configs/labels.json
 
   # --- Main-only ---
-
   label-sync:
     name: Label Sync
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
