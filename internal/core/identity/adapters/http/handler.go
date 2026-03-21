@@ -6,6 +6,7 @@ import (
 
 	commonhttp "github.com/kleff/go-common/adapters/http"
 	"github.com/kleff/go-common/domain"
+	"github.com/kleff/platform/internal/shared/middleware"
 )
 
 const basePath = "/api/v1/identity"
@@ -25,10 +26,18 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH "+basePath+"/me", h.updateMe)
 }
 
+type meResponse struct {
+	UserID string `json:"user_id"`
+}
+
 // GET /api/v1/identity/me — returns the currently authenticated user.
 func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
-	// TODO: extract user from JWT claims injected by auth middleware.
-	commonhttp.Error(w, domain.NewUnauthorized("not implemented"))
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok {
+		commonhttp.Error(w, domain.NewUnauthorized("unauthorized"))
+		return
+	}
+	commonhttp.Success(w, meResponse{UserID: claims.Subject})
 }
 
 // PATCH /api/v1/identity/me — updates the current user's profile.

@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"github.com/kleff/platform/internal/shared/hydra"
 )
 
 // contextKey is unexported to prevent collision with other packages.
@@ -28,26 +30,29 @@ func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 }
 
 // RequireAuth is a middleware that validates the Bearer token in the
-// Authorization header. The token is verified against the OIDC authority
-// configured at startup.
-//
-// TODO: implement JWT verification using jwks endpoint from OIDC discovery.
-func RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := extractBearer(r)
-		if token == "" {
-			http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
+// Authorization header. The token is verified against Hydra's token
+// introspection endpoint. The Hydra admin URL stays internal to the
+// cluster and is never publicly exposed.
+func RequireAuth(introspector *hydra.Introspector) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := extractBearer(r)
+			if token == "" {
+				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
 
-		// TODO: validate JWT signature and expiry, extract claims.
-		_ = token
+			subject, err := introspector.Introspect(r.Context(), token)
+			if err != nil {
+				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
 
-		// Stub: inject placeholder claims so downstream handlers can compile.
-		claims := &Claims{Subject: "stub"}
-		ctx := context.WithValue(r.Context(), claimsKey, claims)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+			claims := &Claims{Subject: subject}
+			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // RequireRole ensures the caller has at least one of the specified roles.
