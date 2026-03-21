@@ -6,23 +6,25 @@ import (
 	"log/slog"
 
 	// Domain module HTTP handlers
-	identityhttp "github.com/kleff/platform/internal/core/identity/adapters/http"
-	organizationshttp "github.com/kleff/platform/internal/core/organizations/adapters/http"
-	deploymentshttp "github.com/kleff/platform/internal/core/deployments/adapters/http"
-	nodeshttp "github.com/kleff/platform/internal/core/nodes/adapters/http"
-	billinghttp "github.com/kleff/platform/internal/core/billing/adapters/http"
-	usagehttp "github.com/kleff/platform/internal/core/usage/adapters/http"
-	audithttp "github.com/kleff/platform/internal/core/audit/adapters/http"
 	adminhttp "github.com/kleff/platform/internal/core/admin/adapters/http"
+	audithttp "github.com/kleff/platform/internal/core/audit/adapters/http"
+	billinghttp "github.com/kleff/platform/internal/core/billing/adapters/http"
+	deploymentshttp "github.com/kleff/platform/internal/core/deployments/adapters/http"
+	identityhttp "github.com/kleff/platform/internal/core/identity/adapters/http"
+	nodeshttp "github.com/kleff/platform/internal/core/nodes/adapters/http"
+	organizationshttp "github.com/kleff/platform/internal/core/organizations/adapters/http"
+	usagehttp "github.com/kleff/platform/internal/core/usage/adapters/http"
+	"github.com/kleff/platform/internal/shared/hydra"
 )
 
 // Container holds all wired-up application components.
 // This is the composition root — dependencies flow in one direction, from
 // infrastructure outward to the HTTP layer.
 type Container struct {
-	Config *Config
-	Logger *slog.Logger
-	DB     *sql.DB
+	Config       *Config
+	Logger       *slog.Logger
+	DB           *sql.DB
+	Introspector *hydra.Introspector
 
 	// HTTP handler groups per domain module
 	IdentityHandler      *identityhttp.Handler
@@ -43,9 +45,10 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	}
 
 	return &Container{
-		Config: cfg,
-		Logger: logger,
-		DB:     db,
+		Config:       cfg,
+		Logger:       logger,
+		DB:           db,
+		Introspector: hydra.NewIntrospector(cfg.HydraAdminURL),
 
 		IdentityHandler:      identityhttp.NewHandler(logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),

@@ -35,7 +35,7 @@ func buildRouter(c *Container) http.Handler {
 	c.AuditHandler.RegisterRoutes(apiMux)
 	c.AdminHandler.RegisterRoutes(apiMux)
 
-	mux.Handle("/api/", middleware.RequireAuth(apiMux))
+	mux.Handle("/api/", middleware.RequireAuth(c.Introspector)(apiMux))
 
 	// ── Global middleware stack ─────────────────────────────────────────────
 	var handler http.Handler = mux
