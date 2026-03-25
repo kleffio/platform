@@ -1,0 +1,31 @@
+id: minecraft-java-paper
+crate_id: minecraft
+name: Java Edition – Paper
+image: itzg/minecraft-server:latest
+env_defaults:
+  TYPE: PAPER
+  VERSION: "1.21.4"
+  MAX_PLAYERS: "20"
+  DIFFICULTY: normal
+  MODE: survival
+  VIEW_DISTANCE: "10"
+  LEVEL_SEED: ""
+  ONLINE_MODE: "true"
+  EULA: "TRUE"
+ports:
+  - container_port: 25565
+    protocol: TCP
+extensibility:
+  - type: mod
+    label: Mods
+    sources:
+      - modrinth
+      - curseforge
+    game_version_env_key: VERSION
+    install_path: /data/plugins
+    file_extension: .jar
+  - type: world
+    label: World
+    sources:
+      - upload
+    install_path: /data/world

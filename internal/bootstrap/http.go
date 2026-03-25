@@ -34,6 +34,8 @@ func buildRouter(c *Container) http.Handler {
 	c.UsageHandler.RegisterRoutes(apiMux)
 	c.AuditHandler.RegisterRoutes(apiMux)
 	c.AdminHandler.RegisterRoutes(apiMux)
+	c.CatalogHandler.RegisterRoutes(apiMux)
+	c.GameServersHandler.RegisterRoutes(apiMux)
 
 	mux.Handle("/api/", middleware.RequireAuth(c.Introspector)(apiMux))
 

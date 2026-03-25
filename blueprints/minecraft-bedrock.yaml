@@ -1,0 +1,21 @@
+id: minecraft-bedrock
+crate_id: minecraft
+name: Bedrock Edition
+image: itzg/minecraft-bedrock-server:latest
+env_defaults:
+  EULA: "TRUE"
+  SERVER_NAME: Kleff Bedrock Server
+  GAMEMODE: survival
+  DIFFICULTY: easy
+  MAX_PLAYERS: "20"
+  ONLINE_MODE: "true"
+  VERSION: LATEST
+ports:
+  - container_port: 19132
+    protocol: UDP
+extensibility:
+  - type: world
+    label: World
+    sources:
+      - upload
+    install_path: /data/worlds

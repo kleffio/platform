@@ -1,0 +1,29 @@
+id: rust-oxide
+crate_id: rust
+name: Rust – Oxide (uMod)
+image: didstopia/rust-server:latest
+env_defaults:
+  RUST_SERVER_STARTUP_ARGUMENTS: -batchmode -load -nographics +server.secure 1
+  RUST_SERVER_IDENTITY: kleff
+  RUST_SERVER_SEED: "12345"
+  RUST_SERVER_MAXPLAYERS: "50"
+  RUST_SERVER_WORLDSIZE: "3000"
+  RUST_OXIDE_ENABLED: "1"
+ports:
+  - container_port: 28015
+    protocol: UDP
+  - container_port: 28016
+    protocol: TCP
+extensibility:
+  - type: plugin
+    label: Plugins
+    sources:
+      - umod
+    game_version_env_key: ""
+    install_path: /steamcmd/rust/oxide/plugins
+    file_extension: .cs
+  - type: map
+    label: Custom Map
+    sources:
+      - upload
+    install_path: /steamcmd/rust/maps

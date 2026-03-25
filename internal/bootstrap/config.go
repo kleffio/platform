@@ -32,6 +32,20 @@ type Config struct {
 
 	// LogLevel controls the minimum log severity: debug, info, warn, error.
 	LogLevel string
+
+	// RedisURL is the connection URL for the daemon job queue Redis instance.
+	// Example: redis://localhost:6379/0
+	RedisURL string
+
+	// RedisPassword is the optional Redis AUTH password.
+	RedisPassword string
+
+	// RedisTLS enables TLS for the Redis connection.
+	RedisTLS bool
+
+	// BlueprintsDir is the directory containing Blueprint YAML files.
+	// Defaults to ./blueprints relative to the working directory.
+	BlueprintsDir string
 }
 
 // LoadConfig reads and validates configuration from environment variables.
@@ -44,6 +58,10 @@ func LoadConfig() (*Config, error) {
 		OIDCClientID:  config.String("OIDC_CLIENT_ID", "platform"),
 		HydraAdminURL: config.String("HYDRA_ADMIN_URL", ""),
 		LogLevel:      config.String("LOG_LEVEL", "info"),
+		RedisURL:      config.String("REDIS_URL", "redis://localhost:6379/0"),
+		RedisPassword: config.String("REDIS_PASSWORD", ""),
+		RedisTLS:      config.Bool("REDIS_TLS", false),
+		BlueprintsDir: config.String("BLUEPRINTS_DIR", "./blueprints"),
 	}
 
 	if raw := config.String("CORS_ALLOWED_ORIGINS", ""); raw != "" {
