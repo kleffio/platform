@@ -111,6 +111,19 @@ func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 		})
 	}
 }
+func RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		role, ok := r.Context().Value("role").(string)
+
+		if !ok || role != "admin" {
+			http.Error(w, "admin access required", http.StatusForbidden)
+			return
+		}
+
+		next(w, r)
+	}
+}
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
