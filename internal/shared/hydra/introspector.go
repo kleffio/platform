@@ -28,7 +28,9 @@ type introspectResponse struct {
 }
 
 func (i *Introspector) Introspect(ctx context.Context, token string) (string, error) {
-	endpoint := i.adminURL + "/admin/oauth2/introspect"
+	// adminURL is the full introspection endpoint — no path appended.
+	// Works with any RFC 7662-compliant provider (Hydra, Keycloak, etc.).
+	endpoint := i.adminURL
 
 	body := url.Values{}
 	body.Set("token", token)
