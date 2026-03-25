@@ -22,9 +22,13 @@ type Config struct {
 	// OIDCClientID is the expected audience claim in incoming JWTs.
 	OIDCClientID string
 
-	// HydraAdminURL is the internal cluster URL for Hydra's admin API.
-	// Never exposed publicly. Example: http://hydra-admin.ory.svc.cluster.local:4445
-	HydraAdminURL string
+	// IntrospectURL is the OAuth2 token introspection endpoint (RFC 7662).
+	// Set OAUTH2_INTROSPECT_URL to the full URL for your identity provider:
+	//   Ory Hydra:    https://hydra-admin.example.com/admin/oauth2/introspect
+	//   Keycloak:     https://keycloak.example.com/realms/<realm>/protocol/openid-connect/token/introspect
+	//   Ory Kratos+Hydra: same Hydra admin URL above
+	// Optional — if unset and OIDC_AUTHORITY is provided, falls back to {OIDC_AUTHORITY}/oauth2/introspect.
+	IntrospectURL string
 
 	// CORSAllowedOrigins is the list of allowed CORS origins.
 	// An empty list permits all origins (development mode).
@@ -42,7 +46,7 @@ func LoadConfig() (*Config, error) {
 		DatabaseURL:   config.String("DATABASE_URL", ""),
 		OIDCAuthority: config.String("OIDC_AUTHORITY", ""),
 		OIDCClientID:  config.String("OIDC_CLIENT_ID", "platform"),
-		HydraAdminURL: config.String("HYDRA_ADMIN_URL", ""),
+		IntrospectURL: config.String("OAUTH2_INTROSPECT_URL", ""),
 		LogLevel:      config.String("LOG_LEVEL", "info"),
 	}
 
@@ -54,8 +58,9 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
 
-	if cfg.HydraAdminURL == "" {
-		return nil, fmt.Errorf("HYDRA_ADMIN_URL is required")
+	// Derive introspection URL from OIDC authority if not explicitly set.
+	if cfg.IntrospectURL == "" && cfg.OIDCAuthority != "" {
+		cfg.IntrospectURL = strings.TrimRight(cfg.OIDCAuthority, "/") + "/oauth2/introspect"
 	}
 
 	return cfg, nil

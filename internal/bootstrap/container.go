@@ -13,6 +13,10 @@ import (
 	identityhttp "github.com/kleff/platform/internal/core/identity/adapters/http"
 	nodeshttp "github.com/kleff/platform/internal/core/nodes/adapters/http"
 	organizationshttp "github.com/kleff/platform/internal/core/organizations/adapters/http"
+	profilescmds "github.com/kleff/platform/internal/core/profiles/application/commands"
+	profilesqueries "github.com/kleff/platform/internal/core/profiles/application/queries"
+	profileshttp "github.com/kleff/platform/internal/core/profiles/adapters/http"
+	profilespersistence "github.com/kleff/platform/internal/core/profiles/adapters/persistence"
 	usagehttp "github.com/kleff/platform/internal/core/usage/adapters/http"
 	"github.com/kleff/platform/internal/shared/hydra"
 )
@@ -35,6 +39,7 @@ type Container struct {
 	UsageHandler         *usagehttp.Handler
 	AuditHandler         *audithttp.Handler
 	AdminHandler         *adminhttp.Handler
+	ProfilesHandler      *profileshttp.Handler
 }
 
 // NewContainer wires up all dependencies and returns the composition root.
@@ -44,11 +49,20 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 
+	// ── Profiles module ──────────────────────────────────────────────────────
+	// Kratos integration: the ProfileRepository uses the OIDC subject (= Kratos
+	// identity.id) as its primary key. The UpsertProfileHandler creates a default
+	// row on the user's first authenticated request (lazy creation strategy).
+	profileRepo := profilespersistence.NewPostgresProfileRepository(db)
+	upsertProfile := profilescmds.NewUpsertProfileHandler(profileRepo)
+	updateProfile := profilescmds.NewUpdateProfileHandler(profileRepo)
+	getProfile := profilesqueries.NewGetProfileHandler(profileRepo)
+
 	return &Container{
 		Config:       cfg,
 		Logger:       logger,
 		DB:           db,
-		Introspector: hydra.NewIntrospector(cfg.HydraAdminURL),
+		Introspector: hydra.NewIntrospector(cfg.IntrospectURL),
 
 		IdentityHandler:      identityhttp.NewHandler(logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
@@ -58,6 +72,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		UsageHandler:         usagehttp.NewHandler(logger),
 		AuditHandler:         audithttp.NewHandler(logger),
 		AdminHandler:         adminhttp.NewHandler(logger),
+		ProfilesHandler:      profileshttp.NewHandler(logger, upsertProfile, updateProfile, getProfile),
 	}, nil
 }
 
