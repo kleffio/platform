@@ -27,7 +27,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 type meResponse struct {
-	UserID string `json:"user_id"`
+	UserID string   `json:"user_id"`
+	Roles  []string `json:"roles"`
 }
 
 // GET /api/v1/identity/me — returns the currently authenticated user.
@@ -37,7 +38,11 @@ func (h *Handler) getMe(w http.ResponseWriter, r *http.Request) {
 		commonhttp.Error(w, domain.NewUnauthorized("unauthorized"))
 		return
 	}
-	commonhttp.Success(w, meResponse{UserID: claims.Subject})
+	roles := claims.Roles
+	if roles == nil {
+		roles = []string{}
+	}
+	commonhttp.Success(w, meResponse{UserID: claims.Subject, Roles: roles})
 }
 
 // PATCH /api/v1/identity/me — updates the current user's profile.

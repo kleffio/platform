@@ -10,7 +10,7 @@ import (
 // buildRouter assembles the main HTTP router for the platform API.
 // All routes are versioned under /api/v1.
 func buildRouter(c *Container) http.Handler {
-	// ── Unauthenticated mux (health probes only) ────────────────────────────
+	// ── Unauthenticated mux (health probes + public auth endpoints) ─────────
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -21,6 +21,11 @@ func buildRouter(c *Container) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
+
+	// Public auth routes (login + register) — no bearer token required.
+	// The Go API proxies these to the configured IDP adapter so the panel
+	// never needs to know which identity provider is deployed.
+	c.AuthHandler.RegisterPublicRoutes(mux)
 
 	// ── Authenticated API mux ───────────────────────────────────────────────
 	// All domain routes run behind RequireAuth. The mux is registered under
@@ -33,10 +38,14 @@ func buildRouter(c *Container) http.Handler {
 	c.BillingHandler.RegisterRoutes(apiMux)
 	c.UsageHandler.RegisterRoutes(apiMux)
 	c.AuditHandler.RegisterRoutes(apiMux)
-	c.AdminHandler.RegisterRoutes(apiMux)
 	c.ProfilesHandler.RegisterRoutes(apiMux)
 
-	mux.Handle("/api/", middleware.RequireAuth(c.Introspector)(apiMux))
+	// ── Admin sub-mux (requires "admin" realm role on top of auth) ──────────
+	adminMux := http.NewServeMux()
+	c.AdminHandler.RegisterRoutes(adminMux)
+	apiMux.Handle("/api/v1/admin/", middleware.RequireRole("admin")(adminMux))
+
+	mux.Handle("/api/", middleware.RequireAuth(c.TokenVerifier)(apiMux))
 
 	// ── Global middleware stack ─────────────────────────────────────────────
 	var handler http.Handler = mux

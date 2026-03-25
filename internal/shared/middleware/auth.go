@@ -5,8 +5,6 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/kleff/platform/internal/shared/hydra"
 )
 
 // contextKey is unexported to prevent collision with other packages.
@@ -30,10 +28,9 @@ func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 }
 
 // RequireAuth is a middleware that validates the Bearer token in the
-// Authorization header. The token is verified against Hydra's token
-// introspection endpoint. The Hydra admin URL stays internal to the
-// cluster and is never publicly exposed.
-func RequireAuth(introspector *hydra.Introspector) func(http.Handler) http.Handler {
+// Authorization header. The token is verified using the provided TokenVerifier,
+// which may perform JWKS-based JWT validation or token introspection.
+func RequireAuth(verifier TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := extractBearer(r)
@@ -42,13 +39,13 @@ func RequireAuth(introspector *hydra.Introspector) func(http.Handler) http.Handl
 				return
 			}
 
-			subject, err := introspector.Introspect(r.Context(), token)
+			result, err := verifier.Verify(r.Context(), token)
 			if err != nil {
 				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
 
-			claims := &Claims{Subject: subject}
+			claims := &Claims{Subject: result.Subject, Roles: result.Roles}
 			ctx := context.WithValue(r.Context(), claimsKey, claims)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
