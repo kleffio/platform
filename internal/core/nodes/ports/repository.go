@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/kleff/platform/internal/core/nodes/domain"
+	"github.com/kleffio/platform/internal/core/nodes/domain"
 )
 
 // NodeRepository is the persistence port for Node aggregates.

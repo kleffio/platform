@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/kleff/platform/internal/core/deployments/domain"
+	"github.com/kleffio/platform/internal/core/deployments/domain"
 )
 
 // DeploymentRepository is the persistence port for Deployment records.

@@ -1,6 +1,6 @@
 # Development image — uses Air for live reload on source changes.
-# Source is volume-mounted by docker compose at /build.
-FROM golang:1.24-alpine
+# Source is volume-mounted by docker compose at /build/platform and /build/plugin-sdk.
+FROM golang:1.25-alpine
 
 RUN apk add --no-cache git curl ca-certificates
 
@@ -12,9 +12,12 @@ RUN go install github.com/air-verse/air@latest && \
 WORKDIR /build
 
 # Pre-download workspace dependencies for faster first-run.
-COPY go.work ./
-COPY go.mod ./
-COPY packages/go.mod packages/
+COPY plugin-sdk/go.mod plugin-sdk/go.sum plugin-sdk/
+COPY platform/go.work platform/go.work.sum platform/
+COPY platform/go.mod platform/go.sum platform/
+COPY platform/packages/go.mod platform/packages/
+
+WORKDIR /build/platform
 RUN go work sync
 
 EXPOSE 8080 2345

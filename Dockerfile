@@ -1,22 +1,25 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /build
 
-# Copy workspace and module manifests first for better layer caching.
-# The workspace includes the root module and ./packages (go-common).
-COPY go.work ./
-COPY go.mod ./
-COPY packages/go.mod packages/
+# Copy module manifests first for better layer caching.
+COPY plugin-sdk/go.mod plugin-sdk/go.sum plugin-sdk/
+COPY platform/go.work platform/go.work.sum platform/
+COPY platform/go.mod platform/go.sum platform/
+COPY platform/packages/go.mod platform/packages/
 
-# Sync the workspace so Go resolves all local module replacements.
+WORKDIR /build/platform
 RUN go work sync
 
-# Copy the full source tree and build the production binary.
-COPY . .
+# Copy full source and build.
+WORKDIR /build
+COPY plugin-sdk/ plugin-sdk/
+COPY platform/ platform/
 
+WORKDIR /build/platform
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
     -ldflags="-w -s" \
@@ -25,7 +28,6 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     ./cmd/api/
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-# alpine provides a minimal shell and wget so Docker health checks work.
 FROM alpine:3
 
 RUN apk add --no-cache ca-certificates tzdata wget

@@ -1,4 +1,4 @@
-go 1.23
+go 1.25.0
 
 use (
 	// Platform control plane API (modular monolith)
@@ -6,4 +6,7 @@ use (
 
 	// Shared Go library
 	./packages
+
+	// Plugin contract SDK (local dev; published to github.com/kleffio/plugin-sdk for independent builds)
+	../plugin-sdk
 )

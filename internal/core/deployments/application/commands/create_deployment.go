@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kleff/platform/internal/core/deployments/domain"
-	"github.com/kleff/platform/internal/core/deployments/ports"
-	"github.com/kleff/platform/internal/shared/ids"
+	"github.com/kleffio/platform/internal/core/deployments/domain"
+	"github.com/kleffio/platform/internal/core/deployments/ports"
+	"github.com/kleffio/platform/internal/shared/ids"
 )
 
 // CreateDeploymentCommand represents user intent to deploy a specific version
