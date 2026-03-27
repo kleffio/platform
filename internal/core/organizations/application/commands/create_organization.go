@@ -7,9 +7,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/kleff/platform/internal/core/organizations/domain"
-	"github.com/kleff/platform/internal/core/organizations/ports"
-	"github.com/kleff/platform/internal/shared/ids"
+	"github.com/kleffio/platform/internal/core/organizations/domain"
+	"github.com/kleffio/platform/internal/core/organizations/ports"
+	"github.com/kleffio/platform/internal/shared/ids"
 )
 
 // CreateOrganizationCommand carries the intent to create a new organization.

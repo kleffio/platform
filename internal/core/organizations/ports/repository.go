@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/kleff/platform/internal/core/organizations/domain"
+	"github.com/kleffio/platform/internal/core/organizations/domain"
 )
 
 // OrganizationRepository is the persistence port for Organization aggregates.

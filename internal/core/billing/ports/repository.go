@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/kleff/platform/internal/core/billing/domain"
+	"github.com/kleffio/platform/internal/core/billing/domain"
 )
 
 // SubscriptionRepository is the persistence port for Subscription aggregates.

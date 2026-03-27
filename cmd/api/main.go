@@ -3,8 +3,8 @@ package main
 import (
 	"os"
 
-	"github.com/kleff/platform/internal/bootstrap"
-	"github.com/kleff/platform/internal/shared/logging"
+	"github.com/kleffio/platform/internal/bootstrap"
+	"github.com/kleffio/platform/internal/shared/logging"
 )
 
 func main() {

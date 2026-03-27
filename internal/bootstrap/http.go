@@ -3,47 +3,54 @@ package bootstrap
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	commonhttp "github.com/kleff/go-common/adapters/http"
-	"github.com/kleff/platform/internal/shared/middleware"
+	"github.com/kleffio/platform/internal/shared/middleware"
 )
 
-// buildRouter assembles the main HTTP router for the platform API.
-// All routes are versioned under /api/v1.
 func buildRouter(c *Container) http.Handler {
-	// ── Unauthenticated mux (health probes only) ────────────────────────────
-	mux := http.NewServeMux()
+	r := chi.NewRouter()
 
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+	// Global middleware — outermost to innermost
+	r.Use(commonhttp.CORS(c.Config.CORSAllowedOrigins...))
+	r.Use(commonhttp.Recover(c.Logger))
+	r.Use(commonhttp.Logger(c.Logger))
+	r.Use(commonhttp.RequestID)
+	r.Use(middleware.PluginRouteInterceptor(c.PluginManager, c.TokenVerifier))
+
+	// Health probes
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/readyz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// ── Authenticated API mux ───────────────────────────────────────────────
-	// All domain routes run behind RequireAuth. The mux is registered under
-	// /api/ so the auth middleware only wraps those paths.
-	apiMux := http.NewServeMux()
-	c.IdentityHandler.RegisterRoutes(apiMux)
-	c.OrganizationsHandler.RegisterRoutes(apiMux)
-	c.DeploymentsHandler.RegisterRoutes(apiMux)
-	c.NodesHandler.RegisterRoutes(apiMux)
-	c.BillingHandler.RegisterRoutes(apiMux)
-	c.UsageHandler.RegisterRoutes(apiMux)
-	c.AuditHandler.RegisterRoutes(apiMux)
-	c.AdminHandler.RegisterRoutes(apiMux)
-	c.ProfilesHandler.RegisterRoutes(apiMux)
+	// Public auth routes (login, register, config) — no bearer token required.
+	c.AuthHandler.RegisterPublicRoutes(r)
 
-	mux.Handle("/api/", middleware.RequireAuth(c.Introspector)(apiMux))
+	// Authenticated routes
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireAuth(c.TokenVerifier))
+		r.Use(middleware.PluginRequest(c.PluginManager))
 
-	// ── Global middleware stack ─────────────────────────────────────────────
-	var handler http.Handler = mux
-	handler = commonhttp.RequestID(handler)
-	handler = commonhttp.Logger(c.Logger)(handler)
-	handler = commonhttp.Recover(c.Logger)(handler)
-	handler = commonhttp.CORS(c.Config.CORSAllowedOrigins...)(handler)
+		c.AuthHandler.RegisterRoutes(r)
+		c.OrganizationsHandler.RegisterRoutes(r)
+		c.DeploymentsHandler.RegisterRoutes(r)
+		c.NodesHandler.RegisterRoutes(r)
+		c.BillingHandler.RegisterRoutes(r)
+		c.UsageHandler.RegisterRoutes(r)
+		c.AuditHandler.RegisterRoutes(r)
 
-	return handler
+		// Admin routes — additionally require the "admin" role.
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireRole("admin"))
+			c.AdminHandler.RegisterRoutes(r)
+			c.PluginsHandler.RegisterRoutes(r)
+		})
+	})
+
+	return r
 }

@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/kleff/platform/internal/core/audit/domain"
+	"github.com/kleffio/platform/internal/core/audit/domain"
 )
 
 // AuditRepository is the write-only port for audit events.

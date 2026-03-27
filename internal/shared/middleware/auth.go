@@ -5,68 +5,76 @@ import (
 	"context"
 	"net/http"
 	"strings"
-
-	"github.com/kleff/platform/internal/shared/hydra"
 )
 
-// contextKey is unexported to prevent collision with other packages.
 type contextKey string
 
 const claimsKey contextKey = "jwt_claims"
 
-// Claims holds the parsed JWT claims injected by the auth middleware.
+// Claims holds verified identity injected into the request context by RequireAuth.
 type Claims struct {
-	Subject string // OIDC sub
+	Subject string
 	Email   string
 	Roles   []string
-	OrgID   string // organization derived from token claims
 }
 
-// ClaimsFromContext retrieves parsed JWT claims from the request context.
-// Returns (nil, false) if no claims are present (unauthenticated request).
+// VerifyResult is returned by TokenVerifier.Verify on success.
+type VerifyResult struct {
+	Subject string
+	Email   string
+	Roles   []string
+}
+
+// TokenVerifier validates a raw bearer token and returns its claims.
+// Implemented by PluginTokenVerifier, which delegates to the active IDP plugin.
+type TokenVerifier interface {
+	Verify(ctx context.Context, rawToken string) (*VerifyResult, error)
+}
+
+// ClaimsFromContext retrieves verified claims injected by RequireAuth.
+// Returns (nil, false) if the request was not authenticated.
 func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 	c, ok := ctx.Value(claimsKey).(*Claims)
 	return c, ok
 }
 
-// RequireAuth is a middleware that validates the Bearer token in the
-// Authorization header. The token is verified against Hydra's token
-// introspection endpoint. The Hydra admin URL stays internal to the
-// cluster and is never publicly exposed.
-func RequireAuth(introspector *hydra.Introspector) func(http.Handler) http.Handler {
+// RequireAuth validates the Bearer token on every request using the provided
+// TokenVerifier. On success, claims are injected into the request context.
+func RequireAuth(verifier TokenVerifier) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := extractBearer(r)
 			if token == "" {
-				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-
-			subject, err := introspector.Introspect(r.Context(), token)
+			result, err := verifier.Verify(r.Context(), token)
 			if err != nil {
-				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
-
-			claims := &Claims{Subject: subject}
-			ctx := context.WithValue(r.Context(), claimsKey, claims)
+			ctx := context.WithValue(r.Context(), claimsKey, &Claims{
+				Subject: result.Subject,
+				Email:   result.Email,
+				Roles:   result.Roles,
+			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 // RequireRole ensures the caller has at least one of the specified roles.
+// Must be used downstream of RequireAuth.
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(roles))
 	for _, r := range roles {
 		allowed[r] = true
 	}
-
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			claims, ok := ClaimsFromContext(r.Context())
 			if !ok {
-				http.Error(w, `{"error":"unauthorized","code":"unauthorized"}`, http.StatusUnauthorized)
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
 			for _, role := range claims.Roles {
@@ -75,7 +83,7 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 					return
 				}
 			}
-			http.Error(w, `{"error":"forbidden","code":"forbidden"}`, http.StatusForbidden)
+			http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		})
 	}
 }
