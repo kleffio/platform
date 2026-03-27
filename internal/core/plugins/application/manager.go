@@ -616,12 +616,6 @@ func (m *Manager) clearCapabilities(id string) {
 	m.mu.Unlock()
 }
 
-func (m *Manager) hasCapability(id, cap string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.capabilities[id][cap]
-}
-
 // HasIdentityProvider reports whether any active plugin declared CapabilityIdentityProvider.
 func (m *Manager) HasIdentityProvider() bool {
 	m.mu.RLock()

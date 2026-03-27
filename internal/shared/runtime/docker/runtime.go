@@ -10,9 +10,7 @@ import (
 	"strings"
 	"time"
 
-	dockertypes "github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	dockerclient "github.com/docker/docker/client"
@@ -250,22 +248,5 @@ func (r *Runtime) pullImage(ctx context.Context, ref string) error {
 	}
 	defer rc.Close()
 	_, err = io.Copy(io.Discard, rc) // drain to completion
-	return err
-}
-
-// ensureNetwork creates the kleff network if it does not exist.
-func (r *Runtime) ensureNetwork(ctx context.Context) error {
-	nets, err := r.client.NetworkList(ctx, dockertypes.NetworkListOptions{
-		Filters: filters.NewArgs(filters.Arg("name", r.networkName)),
-	})
-	if err != nil {
-		return err
-	}
-	for _, n := range nets {
-		if n.Name == r.networkName {
-			return nil
-		}
-	}
-	_, err = r.client.NetworkCreate(ctx, r.networkName, dockertypes.NetworkCreate{Driver: "bridge"})
 	return err
 }
