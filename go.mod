@@ -8,7 +8,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/kleff/go-common v0.0.0
-	github.com/kleffio/plugin-sdk v0.0.0
+	github.com/kleffio/plugin-sdk v0.0.0-20260327000334-ef46a02d9d74
 	google.golang.org/grpc v1.64.0
 )
 
@@ -48,5 +48,3 @@ require (
 )
 
 replace github.com/kleff/go-common => ./packages
-
-replace github.com/kleffio/plugin-sdk => ../plugin-sdk
