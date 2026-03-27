@@ -26,3 +26,5 @@ jobs:
         with:
           version: latest
           args: --go=1.24
+        env:
+          GOWORK: off
