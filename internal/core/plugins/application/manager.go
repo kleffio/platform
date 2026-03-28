@@ -173,6 +173,11 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 
 // Remove stops the container, removes the DB record, and closes the gRPC connection.
 func (m *Manager) Remove(ctx context.Context, pluginID string) error {
+	// Refuse to remove the active IDP — there must always be one active IDP.
+	if activeID, _ := m.store.GetSetting(ctx, activeIDPSettingKey); activeID == pluginID {
+		return fmt.Errorf("remove plugin: %q is the active IDP; activate a different IDP plugin first", pluginID)
+	}
+
 	m.setStatus(pluginID, domain.PluginStatusRemoving)
 
 	_ = m.pool.Close(pluginID)
@@ -213,6 +218,11 @@ func (m *Manager) Enable(ctx context.Context, pluginID string) error {
 
 // Disable stops the container and closes the gRPC connection.
 func (m *Manager) Disable(ctx context.Context, pluginID string) error {
+	// Refuse to disable the active IDP — there must always be one active IDP.
+	if activeID, _ := m.store.GetSetting(ctx, activeIDPSettingKey); activeID == pluginID {
+		return fmt.Errorf("disable plugin: %q is the active IDP; activate a different IDP plugin first", pluginID)
+	}
+
 	p, err := m.store.FindByID(ctx, pluginID)
 	if err != nil {
 		return fmt.Errorf("disable plugin: find: %w", err)

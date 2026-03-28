@@ -100,7 +100,10 @@ func (h *AuthHandler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("get OIDC config failed", "error", err)
 	}
 	if cfg == nil {
-		commonhttp.Success(w, map[string]any{"enabled": false})
+		commonhttp.Success(w, map[string]any{
+			"enabled":        false,
+			"setup_required": !h.manager.HasIdentityProvider(),
+		})
 		return
 	}
 	commonhttp.Success(w, map[string]any{

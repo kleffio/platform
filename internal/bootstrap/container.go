@@ -40,6 +40,7 @@ type Container struct {
 
 	// HTTP handler groups per domain module
 	AuthHandler          *pluginhttp.AuthHandler
+	SetupHandler         *pluginhttp.SetupHandler
 	OrganizationsHandler *organizationshttp.Handler
 	DeploymentsHandler   *deploymentshttp.Handler
 	NodesHandler         *nodeshttp.Handler
@@ -85,6 +86,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		PluginManager: pluginMgr,
 
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
+		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(logger),
 		NodesHandler:         nodeshttp.NewHandler(logger),

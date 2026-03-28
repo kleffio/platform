@@ -31,6 +31,9 @@ func buildRouter(c *Container) http.Handler {
 	// Public auth routes (login, register, config) — no bearer token required.
 	c.AuthHandler.RegisterPublicRoutes(r)
 
+	// Public setup routes — only active before the first IDP is installed.
+	c.SetupHandler.RegisterPublicRoutes(r)
+
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(c.TokenVerifier))
