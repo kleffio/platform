@@ -6,20 +6,15 @@ RUN apk add --no-cache git ca-certificates tzdata
 WORKDIR /build
 
 # Copy module manifests first for better layer caching.
-COPY plugin-sdk/go.mod plugin-sdk/go.sum plugin-sdk/
-COPY platform/go.work platform/go.work.sum platform/
-COPY platform/go.mod platform/go.sum platform/
-COPY platform/packages/go.mod platform/packages/
+COPY go.work go.work.sum ./
+COPY go.mod go.sum ./
+COPY packages/go.mod packages/
 
-WORKDIR /build/platform
 RUN go work sync
 
 # Copy full source and build.
-WORKDIR /build
-COPY plugin-sdk/ plugin-sdk/
-COPY platform/ platform/
+COPY . .
 
-WORKDIR /build/platform
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build \
     -ldflags="-w -s" \
