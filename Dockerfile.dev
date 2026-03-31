@@ -12,7 +12,7 @@ RUN go install github.com/air-verse/air@latest && \
 WORKDIR /build
 
 # Pre-download workspace dependencies for faster first-run.
-COPY plugin-sdk/go.mod plugin-sdk/go.sum plugin-sdk/
+COPY plugins/plugin-sdk-go/go.mod plugins/plugin-sdk-go/go.sum plugins/plugin-sdk-go/
 COPY platform/go.work platform/go.work.sum platform/
 COPY platform/go.mod platform/go.sum platform/
 COPY platform/packages/go.mod platform/packages/
