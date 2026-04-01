@@ -41,6 +41,10 @@ type Plugin struct {
 	// e.g. "kleff-idp-keycloak:50051"
 	GRPCAddr string
 
+	// FrontendURL is the URL of the plugin's JS bundle served to the browser.
+	// e.g. "http://localhost:3001/plugin.js". Empty for backend-only plugins.
+	FrontendURL string
+
 	// Config holds non-secret configuration values as a JSON blob.
 	// Values are env-var key → value, e.g. {"KEYCLOAK_URL": "http://keycloak:8080"}.
 	Config json.RawMessage
