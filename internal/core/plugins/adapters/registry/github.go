@@ -46,34 +46,55 @@ func New(catalogURL string, ttl time.Duration) *Registry {
 
 var _ ports.PluginRegistry = (*Registry)(nil)
 
-// ListCatalog returns the cached catalog, refreshing if the cache is stale.
+// ListCatalog returns the cached catalog merged with builtin plugins, refreshing if stale.
+// Builtin plugins always appear first and are never overridden by the remote catalog.
 func (r *Registry) ListCatalog(ctx context.Context) ([]*domain.CatalogManifest, error) {
 	r.mu.RLock()
 	if r.catalog != nil && time.Since(r.cachedAt) < r.ttl {
-		c := r.catalog
+		c := r.mergeWithBuiltins(r.catalog)
 		r.mu.RUnlock()
 		return c, nil
 	}
 	r.mu.RUnlock()
 
 	if err := r.Refresh(ctx); err != nil {
-		// Return stale cache if available.
+		// Return builtins + stale cache if available.
 		r.mu.RLock()
 		c := r.catalog
 		r.mu.RUnlock()
-		if c != nil {
-			return c, nil
-		}
-		return nil, err
+		return r.mergeWithBuiltins(c), nil
 	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.catalog, nil
+	return r.mergeWithBuiltins(r.catalog), nil
+}
+
+// mergeWithBuiltins prepends builtinCatalog entries, skipping any remote entries
+// that share an ID with a builtin (builtins win).
+func (r *Registry) mergeWithBuiltins(remote []*domain.CatalogManifest) []*domain.CatalogManifest {
+	builtinIDs := make(map[string]struct{}, len(builtinCatalog))
+	for _, b := range builtinCatalog {
+		builtinIDs[b.ID] = struct{}{}
+	}
+	merged := make([]*domain.CatalogManifest, 0, len(builtinCatalog)+len(remote))
+	merged = append(merged, builtinCatalog...)
+	for _, m := range remote {
+		if _, isBuiltin := builtinIDs[m.ID]; !isBuiltin {
+			merged = append(merged, m)
+		}
+	}
+	return merged
 }
 
 // GetManifest returns the catalog entry for the given plugin ID, or nil, nil.
+// Builtin plugins are checked first.
 func (r *Registry) GetManifest(ctx context.Context, pluginID string) (*domain.CatalogManifest, error) {
+	for _, b := range builtinCatalog {
+		if b.ID == pluginID {
+			return b, nil
+		}
+	}
 	catalog, err := r.ListCatalog(ctx)
 	if err != nil {
 		return nil, err

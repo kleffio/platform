@@ -154,6 +154,12 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 
 	m.setStatus(p.ID, domain.PluginStatusInstalling)
 
+	// Deploy companion containers declared in the manifest (e.g. Keycloak server).
+	if err := m.deployCompanions(ctx, manifest, config); err != nil {
+		m.setStatus(p.ID, domain.PluginStatusError)
+		return nil, fmt.Errorf("install plugin: deploy companions: %w", err)
+	}
+
 	spec := m.buildContainerSpec(p, config)
 	if err := m.rt.Deploy(ctx, spec); err != nil {
 		m.setStatus(p.ID, domain.PluginStatusError)
@@ -184,6 +190,11 @@ func (m *Manager) Remove(ctx context.Context, pluginID string) error {
 	containerID := "kleff-" + pluginID
 	if err := m.rt.Remove(ctx, containerID); err != nil {
 		m.logger.Warn("plugin remove: container removal failed", "id", pluginID, "error", err)
+	}
+
+	// Best-effort removal of companion containers.
+	if manifest, err := m.registry.GetManifest(ctx, pluginID); err == nil && manifest != nil {
+		m.removeCompanions(ctx, manifest)
 	}
 
 	if err := m.store.Delete(ctx, pluginID); err != nil {
@@ -425,6 +436,15 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*plugi
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 func (m *Manager) ensureRunning(ctx context.Context, p *domain.Plugin) error {
+	// Ensure companion containers (e.g. Keycloak server) are running first.
+	if manifest, err := m.registry.GetManifest(ctx, p.ID); err == nil && manifest != nil {
+		secrets, _ := m.decryptSecrets(p.Secrets)
+		cfg := mergeConfig(p.Config, secrets)
+		if err := m.deployCompanions(ctx, manifest, cfg); err != nil {
+			m.logger.Warn("ensureRunning: companion deploy failed", "plugin", p.ID, "error", err)
+		}
+	}
+
 	containerID := "kleff-" + p.ID
 	st, err := m.rt.Status(ctx, containerID)
 	if err != nil {
@@ -456,7 +476,9 @@ func (m *Manager) ensureRunning(ctx context.Context, p *domain.Plugin) error {
 func (m *Manager) buildContainerSpec(p *domain.Plugin, config map[string]string) runtime.ContainerSpec {
 	env := make(map[string]string, len(config)+2)
 	for k, v := range config {
-		env[k] = v
+		if v != "" {
+			env[k] = v
+		}
 	}
 	env["PLUGIN_ID"] = p.ID
 	env["PLUGIN_PORT"] = fmt.Sprintf("%d", grpcPort)
@@ -793,6 +815,62 @@ func (m *Manager) GetUIManifests(ctx context.Context) ([]*pluginsv1.UIManifest, 
 		}
 	}
 	return manifests, nil
+}
+
+// ── Companion container management ───────────────────────────────────────────
+
+// deployCompanions starts companion containers declared in the plugin manifest.
+// Only deploys a companion if it is not already running (idempotent).
+// pluginConfig is the merged plain+secret config for the plugin; companions
+// with SkipIfEnv set are skipped when the user supplied that config key.
+func (m *Manager) deployCompanions(ctx context.Context, manifest *domain.CatalogManifest, pluginConfig map[string]string) error {
+	for _, c := range manifest.Companions {
+		if c.SkipIfEnv != "" && pluginConfig[c.SkipIfEnv] != "" {
+			m.logger.Info("companion skipped: user provided external service",
+				"companion", c.ID, "plugin", manifest.ID, "key", c.SkipIfEnv)
+			continue
+		}
+
+		st, _ := m.rt.Status(ctx, c.ID)
+		if st.State == runtime.StateRunning {
+			continue
+		}
+
+		volumes := make([]runtime.VolumeMount, 0, len(c.Volumes))
+		for _, v := range c.Volumes {
+			volumes = append(volumes, runtime.VolumeMount{Name: v.Name, Target: v.Target})
+		}
+
+		spec := runtime.ContainerSpec{
+			ID:      c.ID,
+			Image:   c.Image,
+			Command: c.Command,
+			Env:     c.Env,
+			Volumes: volumes,
+			Labels: map[string]string{
+				"kleff.io/managed":   "true",
+				"kleff.io/plugin-id": manifest.ID,
+				"kleff.io/companion": "true",
+			},
+			RestartPolicy: runtime.RestartAlways,
+		}
+		if err := m.rt.Deploy(ctx, spec); err != nil {
+			return fmt.Errorf("companion %q: %w", c.ID, err)
+		}
+		m.logger.Info("companion deployed", "companion", c.ID, "plugin", manifest.ID)
+	}
+	return nil
+}
+
+// removeCompanions stops and removes companion containers declared in the manifest.
+func (m *Manager) removeCompanions(ctx context.Context, manifest *domain.CatalogManifest) {
+	for _, c := range manifest.Companions {
+		if err := m.rt.Remove(ctx, c.ID); err != nil {
+			m.logger.Warn("companion remove failed", "companion", c.ID, "plugin", manifest.ID, "error", err)
+		} else {
+			m.logger.Info("companion removed", "companion", c.ID, "plugin", manifest.ID)
+		}
+	}
 }
 
 // ── Secret encryption (AES-256-GCM) ──────────────────────────────────────────
