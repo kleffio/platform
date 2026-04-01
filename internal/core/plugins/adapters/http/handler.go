@@ -244,6 +244,7 @@ type pluginResponse struct {
 	Image       string                    `json:"image"`
 	Version     string                    `json:"version"`
 	GRPCAddr    string                    `json:"grpc_addr"`
+	FrontendURL string                    `json:"frontend_url"`
 	Config      json.RawMessage           `json:"config"`
 	Enabled     bool                      `json:"enabled"`
 	Status      plugindomain.PluginStatus `json:"status"`
@@ -259,6 +260,7 @@ func toResponse(p *plugindomain.Plugin) pluginResponse {
 		Image:       p.Image,
 		Version:     p.Version,
 		GRPCAddr:    p.GRPCAddr,
+		FrontendURL: p.FrontendURL,
 		Config:      p.Config, // secrets already stripped from Config field
 		Enabled:     p.Enabled,
 		Status:      p.Status,

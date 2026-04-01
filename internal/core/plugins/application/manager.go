@@ -92,6 +92,11 @@ func (m *Manager) Start(ctx context.Context) error {
 			m.setStatus(p.ID, domain.PluginStatusDisabled)
 			continue
 		}
+		// Frontend-only plugins have no backend container — mark running immediately.
+		if p.GRPCAddr == "" {
+			m.setStatus(p.ID, domain.PluginStatusRunning)
+			continue
+		}
 		if err := m.ensureRunning(ctx, p); err != nil {
 			m.logger.Warn("plugin manager: startup: failed to start plugin",
 				"id", p.ID, "error", err)
@@ -510,6 +515,11 @@ func (m *Manager) runHealthChecks(ctx context.Context) {
 }
 
 func (m *Manager) checkPlugin(ctx context.Context, p *domain.Plugin) {
+	// Frontend-only plugins have no backend container — always healthy.
+	if p.GRPCAddr == "" {
+		m.setStatus(p.ID, domain.PluginStatusRunning)
+		return
+	}
 	containerID := "kleff-" + p.ID
 	st, err := m.rt.Status(ctx, containerID)
 	if err != nil || st.State != runtime.StateRunning {

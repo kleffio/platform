@@ -6,16 +6,18 @@ RUN apk add --no-cache git ca-certificates tzdata
 WORKDIR /build
 
 # Copy module manifests first for better layer caching.
-COPY go.work go.work.sum ./
-COPY go.mod go.sum ./
+# GOWORK=off disables go.work so go.mod is used directly — all dependencies
+# are fetched from the module proxy using their published versions.
+COPY go.mod go.sum go.work go.work.sum ./
 COPY packages/go.mod packages/
 
-RUN go work sync
+RUN GOWORK=off go mod download
 
 # Copy full source and build.
 COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    GOWORK=off \
     go build \
     -ldflags="-w -s" \
     -trimpath \

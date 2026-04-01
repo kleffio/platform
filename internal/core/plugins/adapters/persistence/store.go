@@ -33,7 +33,7 @@ func (s *PostgresPluginStore) FindByID(ctx context.Context, id string) (*plugind
 		return nil, domain.ErrNotFound
 	}
 	const q = `
-		SELECT id, type, display_name, image, version, grpc_addr,
+		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
 		       config, secrets, enabled, installed_at, updated_at
 		FROM plugins WHERE id = $1`
 	return scanPlugin(s.db.QueryRowContext(ctx, q, id))
@@ -44,7 +44,7 @@ func (s *PostgresPluginStore) ListAll(ctx context.Context) ([]*plugindomain.Plug
 		return nil, nil
 	}
 	const q = `
-		SELECT id, type, display_name, image, version, grpc_addr,
+		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
 		       config, secrets, enabled, installed_at, updated_at
 		FROM plugins ORDER BY installed_at DESC`
 	rows, err := s.db.QueryContext(ctx, q)
@@ -60,7 +60,7 @@ func (s *PostgresPluginStore) ListByType(ctx context.Context, pluginType string)
 		return nil, nil
 	}
 	const q = `
-		SELECT id, type, display_name, image, version, grpc_addr,
+		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
 		       config, secrets, enabled, installed_at, updated_at
 		FROM plugins WHERE type = $1 ORDER BY installed_at DESC`
 	rows, err := s.db.QueryContext(ctx, q, pluginType)
@@ -77,21 +77,27 @@ func (s *PostgresPluginStore) Save(ctx context.Context, p *plugindomain.Plugin) 
 	}
 	const q = `
 		INSERT INTO plugins
-		    (id, type, display_name, image, version, grpc_addr,
+		    (id, type, display_name, image, version, grpc_addr, frontend_url,
 		     config, secrets, enabled, installed_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		ON CONFLICT (id) DO UPDATE SET
-		    display_name = EXCLUDED.display_name,
-		    image        = EXCLUDED.image,
-		    version      = EXCLUDED.version,
-		    grpc_addr    = EXCLUDED.grpc_addr,
-		    config       = EXCLUDED.config,
-		    secrets      = EXCLUDED.secrets,
-		    enabled      = EXCLUDED.enabled,
-		    updated_at   = EXCLUDED.updated_at`
+		    display_name  = EXCLUDED.display_name,
+		    image         = EXCLUDED.image,
+		    version       = EXCLUDED.version,
+		    grpc_addr     = EXCLUDED.grpc_addr,
+		    frontend_url  = EXCLUDED.frontend_url,
+		    config        = EXCLUDED.config,
+		    secrets       = EXCLUDED.secrets,
+		    enabled       = EXCLUDED.enabled,
+		    updated_at    = EXCLUDED.updated_at`
+
+	var frontendURL sql.NullString
+	if p.FrontendURL != "" {
+		frontendURL = sql.NullString{String: p.FrontendURL, Valid: true}
+	}
 
 	_, err := s.db.ExecContext(ctx, q,
-		p.ID, p.Type, p.DisplayName, p.Image, p.Version, p.GRPCAddr,
+		p.ID, p.Type, p.DisplayName, p.Image, p.Version, p.GRPCAddr, frontendURL,
 		json.RawMessage(p.Config), json.RawMessage(p.Secrets),
 		p.Enabled, p.InstalledAt, p.UpdatedAt,
 	)
@@ -155,13 +161,14 @@ func (s *PostgresPluginStore) SetSetting(ctx context.Context, key, value string)
 func scanPlugin(row *sql.Row) (*plugindomain.Plugin, error) {
 	var (
 		p           plugindomain.Plugin
+		frontendURL sql.NullString
 		config      []byte
 		secrets     []byte
 		installedAt time.Time
 		updatedAt   time.Time
 	)
 	err := row.Scan(
-		&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr,
+		&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr, &frontendURL,
 		&config, &secrets, &p.Enabled, &installedAt, &updatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -170,6 +177,7 @@ func scanPlugin(row *sql.Row) (*plugindomain.Plugin, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan plugin: %w", err)
 	}
+	p.FrontendURL = frontendURL.String
 	p.Config = json.RawMessage(config)
 	p.Secrets = json.RawMessage(secrets)
 	p.InstalledAt = installedAt.UTC()
@@ -183,18 +191,20 @@ func scanPlugins(rows *sql.Rows) ([]*plugindomain.Plugin, error) {
 	for rows.Next() {
 		var (
 			p           plugindomain.Plugin
+			frontendURL sql.NullString
 			config      []byte
 			secrets     []byte
 			installedAt time.Time
 			updatedAt   time.Time
 		)
 		err := rows.Scan(
-			&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr,
+			&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr, &frontendURL,
 			&config, &secrets, &p.Enabled, &installedAt, &updatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan plugin: %w", err)
 		}
+		p.FrontendURL = frontendURL.String
 		p.Config = json.RawMessage(config)
 		p.Secrets = json.RawMessage(secrets)
 		p.InstalledAt = installedAt.UTC()
