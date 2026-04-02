@@ -4,9 +4,6 @@ use (
 	// Platform control plane API (modular monolith)
 	.
 
-	// Plugin SDK (local source — repo renamed to plugin-sdk-go)
-	../plugin-sdk-go
-
 	// Shared Go library
 	./packages
 )
