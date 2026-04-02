@@ -50,6 +50,9 @@ type ContainerSpec struct {
 	// Image is the fully qualified Docker image reference.
 	Image string
 
+	// Command overrides the container's default CMD (optional).
+	Command []string
+
 	// Env is the set of environment variables injected into the container.
 	// Secret values are resolved before being passed here.
 	Env map[string]string
@@ -63,11 +66,20 @@ type ContainerSpec struct {
 	// "kleff.io/plugin-id={id}".
 	Labels map[string]string
 
+	// Volumes declares named Docker volumes to mount into the container.
+	Volumes []VolumeMount
+
 	// Resources constrains CPU and memory (optional, 0 = unlimited).
 	Resources ResourceLimits
 
 	// RestartPolicy controls container restart behaviour.
 	RestartPolicy RestartPolicy
+}
+
+// VolumeMount maps a named Docker volume to a path inside the container.
+type VolumeMount struct {
+	Name   string // Docker volume name (created automatically if absent)
+	Target string // Absolute path inside the container
 }
 
 // PortMapping maps a container port to an optional host port.

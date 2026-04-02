@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	commonhttp "github.com/kleff/go-common/adapters/http"
 	"github.com/kleff/go-common/domain"
-	pluginsv1 "github.com/kleffio/plugin-sdk/v1"
+	pluginsv1 "github.com/kleffio/plugin-sdk-go/v1"
 	"github.com/kleffio/platform/internal/core/plugins/ports"
 	"github.com/kleffio/platform/internal/shared/middleware"
 )

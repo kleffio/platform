@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	pluginsv1 "github.com/kleffio/plugin-sdk/v1"
+	pluginsv1 "github.com/kleffio/plugin-sdk-go/v1"
 	"github.com/kleffio/platform/internal/core/plugins/domain"
 )
 

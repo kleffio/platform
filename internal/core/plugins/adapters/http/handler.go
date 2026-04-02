@@ -13,18 +13,25 @@
 //	DELETE /api/v1/admin/plugins/{id}             – remove plugin
 //	GET    /api/v1/admin/plugins/{id}/status      – live container/gRPC status
 //	POST   /api/v1/admin/plugins/{id}/set-active  – set as active IDP
+//
+// Authenticated (any role):
+//
+//	GET    /api/v1/plugins/catalog  – marketplace catalog; admins see all, others see type=ui only
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	commonhttp "github.com/kleff/go-common/adapters/http"
 	"github.com/kleff/go-common/domain"
 	plugindomain "github.com/kleffio/platform/internal/core/plugins/domain"
 	"github.com/kleffio/platform/internal/core/plugins/ports"
+	"github.com/kleffio/platform/internal/shared/middleware"
 )
 
 // Handler is the plugin marketplace HTTP handler.
@@ -41,6 +48,11 @@ func NewHandler(
 	logger *slog.Logger,
 ) *Handler {
 	return &Handler{manager: manager, registry: registry, logger: logger}
+}
+
+// RegisterPublicRoutes attaches authenticated-but-not-admin plugin routes.
+func (h *Handler) RegisterPublicRoutes(r chi.Router) {
+	r.Get("/api/v1/plugins/catalog", h.handleMarketplaceCatalog)
 }
 
 // RegisterRoutes attaches all plugin routes to the provided router.
@@ -67,6 +79,41 @@ func (h *Handler) handleListCatalog(w http.ResponseWriter, r *http.Request) {
 		commonhttp.Error(w, err)
 		return
 	}
+	commonhttp.Success(w, map[string]any{
+		"plugins":   catalog,
+		"cached_at": h.registry.CachedAt(),
+	})
+}
+
+// handleMarketplaceCatalog serves the plugin marketplace to all authenticated users.
+// Admins receive the full catalog; everyone else receives only type=ui plugins.
+func (h *Handler) handleMarketplaceCatalog(w http.ResponseWriter, r *http.Request) {
+	catalog, err := h.registry.ListCatalog(r.Context())
+	if err != nil {
+		h.logger.Error("marketplace catalog", "error", err)
+		commonhttp.Error(w, err)
+		return
+	}
+
+	claims, _ := middleware.ClaimsFromContext(r.Context())
+	isAdmin := false
+	for _, role := range claims.Roles {
+		if role == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+
+	if !isAdmin {
+		filtered := catalog[:0]
+		for _, p := range catalog {
+			if p.Type == "ui" {
+				filtered = append(filtered, p)
+			}
+		}
+		catalog = filtered
+	}
+
 	commonhttp.Success(w, map[string]any{
 		"plugins":   catalog,
 		"cached_at": h.registry.CachedAt(),
@@ -143,7 +190,13 @@ func (h *Handler) handleInstall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p, err := h.manager.Install(r.Context(), manifest, req.Config)
+	// Use a detached context with a generous timeout for install.
+	// Companion images (e.g. Keycloak ~400MB) can take minutes to pull
+	// and must not be cancelled when the HTTP request completes.
+	installCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	p, err := h.manager.Install(installCtx, manifest, req.Config)
 	if err != nil {
 		h.logger.Warn("install plugin failed", "id", req.ID, "error", err)
 		commonhttp.Error(w, err)

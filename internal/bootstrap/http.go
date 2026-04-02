@@ -40,6 +40,7 @@ func buildRouter(c *Container) http.Handler {
 		r.Use(middleware.PluginRequest(c.PluginManager))
 
 		c.AuthHandler.RegisterRoutes(r)
+		c.PluginsHandler.RegisterPublicRoutes(r)
 		c.OrganizationsHandler.RegisterRoutes(r)
 		c.DeploymentsHandler.RegisterRoutes(r)
 		c.NodesHandler.RegisterRoutes(r)

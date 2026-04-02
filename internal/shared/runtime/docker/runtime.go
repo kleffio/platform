@@ -90,9 +90,16 @@ func (r *Runtime) Deploy(ctx context.Context, spec runtime.ContainerSpec) error 
 		restartPolicy = container.RestartPolicy{Name: container.RestartPolicyDisabled}
 	}
 
+	// Build volume binds: "volume-name:/target/path".
+	var binds []string
+	for _, v := range spec.Volumes {
+		binds = append(binds, v.Name+":"+v.Target)
+	}
+
 	hostCfg := &container.HostConfig{
 		PortBindings:  portBindings,
 		RestartPolicy: restartPolicy,
+		Binds:         binds,
 	}
 	if spec.Resources.MemoryMB > 0 {
 		hostCfg.Memory = spec.Resources.MemoryMB * 1024 * 1024
@@ -104,6 +111,7 @@ func (r *Runtime) Deploy(ctx context.Context, spec runtime.ContainerSpec) error 
 	resp, err := r.client.ContainerCreate(ctx,
 		&container.Config{
 			Image:        spec.Image,
+			Cmd:          spec.Command,
 			Env:          env,
 			Labels:       labels,
 			ExposedPorts: exposedPorts,
@@ -240,8 +248,14 @@ func (r *Runtime) Logs(ctx context.Context, id string, lines int) ([]string, err
 	return out, nil
 }
 
-// pullImage pulls a Docker image, streaming progress to the logger.
+// pullImage pulls a Docker image if it is not already present locally
+// (IfNotPresent policy). This allows locally-built images to take precedence
+// over registry images of the same tag, which is useful during development.
 func (r *Runtime) pullImage(ctx context.Context, ref string) error {
+	if _, _, err := r.client.ImageInspectWithRaw(ctx, ref); err == nil {
+		// Image already exists locally — skip pull.
+		return nil
+	}
 	rc, err := r.client.ImagePull(ctx, ref, image.PullOptions{})
 	if err != nil {
 		return err

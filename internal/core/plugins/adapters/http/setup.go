@@ -1,9 +1,11 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	commonhttp "github.com/kleff/go-common/adapters/http"
@@ -89,7 +91,13 @@ func (h *SetupHandler) handleInstall(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	p, err := h.manager.Install(r.Context(), manifest, req.Config)
+	// Use a detached context with a generous timeout for install.
+	// Companion images (e.g. Keycloak ~400MB) can take minutes to pull
+	// and must not be cancelled when the HTTP request completes.
+	installCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	p, err := h.manager.Install(installCtx, manifest, req.Config)
 	if err != nil {
 		h.logger.Warn("setup: install plugin failed", "id", req.ID, "error", err)
 		commonhttp.Error(w, err)
@@ -98,7 +106,7 @@ func (h *SetupHandler) handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	// Automatically set as active IDP if it's an IDP plugin.
 	if manifest.Type == "idp" {
-		if err := h.manager.SetActiveIDP(r.Context(), p.ID); err != nil {
+		if err := h.manager.SetActiveIDP(installCtx, p.ID); err != nil {
 			h.logger.Warn("setup: set active IDP failed", "id", p.ID, "error", err)
 			// Plugin is installed but activation failed — don't fail the whole request.
 		}
@@ -106,3 +114,4 @@ func (h *SetupHandler) handleInstall(w http.ResponseWriter, r *http.Request) {
 
 	commonhttp.Created(w, toResponse(p))
 }
+
