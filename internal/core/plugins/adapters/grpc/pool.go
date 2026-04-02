@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	pluginsv1 "github.com/kleffio/plugin-sdk/v1"
+	pluginsv1 "github.com/kleffio/plugin-sdk-go/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

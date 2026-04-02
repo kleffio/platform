@@ -68,4 +68,111 @@ var builtinCatalog = []*domain.CatalogManifest{
 			},
 		},
 	},
+	{
+		ID:          "idp-keycloak",
+		Name:        "Keycloak",
+		Type:        "idp",
+		Description: "Red Hat Keycloak identity provider. SSO, MFA, and self-hosted user management.",
+		LongDescription: "## Keycloak Identity Provider\n\nConnect Kleff to your Keycloak realm for enterprise-grade identity management.\n\n" +
+			"### Features\n" +
+			"- Direct Access Grant (headless login)\n" +
+			"- User registration via Keycloak Admin REST API\n" +
+			"- RS256 JWT verification via JWKS endpoint\n" +
+			"- Multi-realm support\n\n" +
+			"### Setup\n" +
+			"1. Create a Keycloak realm for Kleff (e.g. `kleff`).\n" +
+			"2. Create a confidential client with **Direct access grants** enabled.\n" +
+			"3. Create an admin service account or use the master realm admin credentials.\n" +
+			"4. Fill in the config fields below and click Install.",
+		Tags:            []string{"self-hosted", "sso", "enterprise", "open-source"},
+		Author:          "Kleff",
+		Repo:            "https://github.com/kleffio/plugins/idp-keycloak",
+		Docs:            "https://docs.kleff.io/plugins/idp-keycloak",
+		Image:           "ghcr.io/kleffio/idp-keycloak",
+		Version:         "1.0.0",
+		MinKleffVersion: "0.5.0",
+		License:         "MIT",
+		Verified:        true,
+		Config: []domain.ConfigField{
+			{
+				Key:         "KEYCLOAK_URL",
+				Label:       "Keycloak URL",
+				Description: "Leave blank to use the bundled Keycloak. Set this to connect to your own existing Keycloak server instead.",
+				Type:        "url",
+				Required:    false,
+			},
+			{
+				Key:         "KEYCLOAK_PUBLIC_URL",
+				Label:       "Public URL",
+				Description: "Browser-reachable Keycloak URL. Only needed if internal and public URLs differ (e.g. behind a reverse proxy).",
+				Type:        "url",
+				Required:    false,
+			},
+			{
+				Key:         "KEYCLOAK_REALM",
+				Label:       "Realm",
+				Description: "Keycloak realm name.",
+				Type:        "string",
+				Required:    false,
+				Default:     "kleff",
+			},
+			{
+				Key:         "KEYCLOAK_CLIENT_ID",
+				Label:       "Client ID",
+				Description: "Client ID with Direct Access Grants enabled.",
+				Type:        "string",
+				Required:    false,
+				Default:     "kleff-panel",
+			},
+			{
+				Key:         "KEYCLOAK_CLIENT_SECRET",
+				Label:       "Client Secret",
+				Description: "Client secret for confidential clients. Leave blank for public clients.",
+				Type:        "secret",
+				Required:    false,
+			},
+			{
+				Key:         "KEYCLOAK_ADMIN_USER",
+				Label:       "Admin Username",
+				Description: "Admin account used for user registration via the Keycloak Admin API.",
+				Type:        "string",
+				Required:    false,
+				Default:     "admin",
+			},
+			{
+				Key:         "KEYCLOAK_ADMIN_PASSWORD",
+				Label:       "Admin Password",
+				Description: "Admin password for user registration.",
+				Type:        "secret",
+				Required:    false,
+				Default:     "admin",
+			},
+			{
+				Key:         "AUTH_MODE",
+				Label:       "Login Mode",
+				Description: "headless — credentials form in Kleff panel. redirect — redirect to Keycloak login page.",
+				Type:        "select",
+				Options:     []string{"headless", "redirect"},
+				Required:    false,
+				Default:     "headless",
+			},
+		},
+		Companions: []domain.CompanionSpec{
+			{
+				ID:      "keycloak",
+				Image:   "quay.io/keycloak/keycloak:26.1",
+				Command: []string{"start-dev"},
+				Env: map[string]string{
+					"KC_BOOTSTRAP_ADMIN_USERNAME": "admin",
+					"KC_BOOTSTRAP_ADMIN_PASSWORD": "admin",
+					"KC_HTTP_PORT":                "8080",
+				},
+				Volumes: []domain.CompanionVolume{
+					{Name: "kleff-keycloak-data", Target: "/opt/keycloak/data"},
+				},
+				SkipIfEnv:    "KEYCLOAK_URL",
+				InternalAddr: "http://keycloak:8080",
+			},
+		},
+	},
 }

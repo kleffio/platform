@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	pluginsv1 "github.com/kleffio/plugin-sdk/v1"
+	pluginsv1 "github.com/kleffio/plugin-sdk-go/v1"
 )
 
 // PluginRouter is the subset of PluginManager used by PluginRouteInterceptor.

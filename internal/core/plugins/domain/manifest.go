@@ -47,6 +47,12 @@ type CompanionSpec struct {
 	// value for that key, the companion is not deployed (the user is providing
 	// their own external service instead).
 	SkipIfEnv string `json:"skipIfEnv,omitempty"`
+
+	// InternalAddr is the address the plugin should use to reach this companion
+	// when it is deployed (i.e. when SkipIfEnv is unset). The platform injects
+	// this value as the SkipIfEnv env var so the plugin always has a valid URL.
+	// Example: "http://keycloak:8080"
+	InternalAddr string `json:"internalAddr,omitempty"`
 }
 
 // CompanionVolume maps a named Docker volume to a path inside the companion container.

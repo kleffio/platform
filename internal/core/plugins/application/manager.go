@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	pluginsv1 "github.com/kleffio/plugin-sdk/v1"
+	pluginsv1 "github.com/kleffio/plugin-sdk-go/v1"
 	grpcpool "github.com/kleffio/platform/internal/core/plugins/adapters/grpc"
 	"github.com/kleffio/platform/internal/core/plugins/domain"
 	"github.com/kleffio/platform/internal/core/plugins/ports"
@@ -165,6 +165,14 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 		return nil, fmt.Errorf("install plugin: deploy companions: %w", err)
 	}
 
+	// For each companion that was deployed (not skipped), inject its internal
+	// address so the plugin container always has a valid URL to reach it.
+	for _, c := range manifest.Companions {
+		if c.SkipIfEnv != "" && c.InternalAddr != "" && config[c.SkipIfEnv] == "" {
+			config[c.SkipIfEnv] = c.InternalAddr
+		}
+	}
+
 	spec := m.buildContainerSpec(p, config)
 	if err := m.rt.Deploy(ctx, spec); err != nil {
 		m.setStatus(p.ID, domain.PluginStatusError)
@@ -179,6 +187,7 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 	m.setStatus(p.ID, domain.PluginStatusRunning)
 	p.Status = domain.PluginStatusRunning
 	m.logger.Info("plugin installed", "id", p.ID, "image", p.Image)
+
 	return p, nil
 }
 
