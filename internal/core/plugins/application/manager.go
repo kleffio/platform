@@ -32,12 +32,13 @@ const (
 
 // Manager implements ports.PluginManager.
 type Manager struct {
-	store     ports.PluginStore
-	registry  ports.PluginRegistry
-	rt        runtime.RuntimeAdapter
-	pool      *grpcpool.Pool
-	secretKey []byte // 32-byte AES-256 key
-	logger    *slog.Logger
+	store       ports.PluginStore
+	registry    ports.PluginRegistry
+	rt          runtime.RuntimeAdapter
+	pool        *grpcpool.Pool
+	secretKey   []byte // 32-byte AES-256 key
+	logger      *slog.Logger
+	projectName string // Docker Compose project name (e.g. "kleff")
 
 	mu           sync.RWMutex
 	statuses     map[string]domain.PluginStatus
@@ -63,6 +64,7 @@ func New(
 	registry ports.PluginRegistry,
 	rt runtime.RuntimeAdapter,
 	secretKey []byte,
+	projectName string,
 	logger *slog.Logger,
 ) *Manager {
 	m := &Manager{
@@ -71,6 +73,7 @@ func New(
 		rt:           rt,
 		pool:         grpcpool.NewPool(),
 		secretKey:    secretKey,
+		projectName:  projectName,
 		logger:       logger,
 		statuses:     make(map[string]domain.PluginStatus),
 		restarts:     make(map[string]int),
@@ -206,6 +209,27 @@ func (m *Manager) Remove(ctx context.Context, pluginID string) error {
 		return fmt.Errorf("remove plugin: %q is the active IDP; activate a different IDP plugin first", pluginID)
 	}
 
+	// Refuse to remove the last IDP plugin — at least one must remain installed.
+	p, err := m.store.FindByID(ctx, pluginID)
+	if err != nil {
+		return fmt.Errorf("remove plugin: find: %w", err)
+	}
+	if p.Type == "idp" {
+		all, err := m.store.ListAll(ctx)
+		if err != nil {
+			return fmt.Errorf("remove plugin: list: %w", err)
+		}
+		idpCount := 0
+		for _, pl := range all {
+			if pl.Type == "idp" && pl.Enabled {
+				idpCount++
+			}
+		}
+		if idpCount <= 1 {
+			return fmt.Errorf("remove plugin: %q is the only identity provider; install another IDP plugin before removing this one", pluginID)
+		}
+	}
+
 	m.setStatus(pluginID, domain.PluginStatusRemoving)
 
 	_ = m.pool.Close(pluginID)
@@ -226,7 +250,14 @@ func (m *Manager) Remove(ctx context.Context, pluginID string) error {
 	m.mu.Lock()
 	delete(m.statuses, pluginID)
 	delete(m.restarts, pluginID)
-	delete(m.capabilities, pluginID)
+	m.mu.Unlock()
+
+	m.clearCapabilities(pluginID) // also removes routes
+
+	m.mu.Lock()
+	if m.activeIDP == pluginID {
+		m.activeIDP = ""
+	}
 	m.mu.Unlock()
 
 	m.logger.Info("plugin removed", "id", pluginID)
@@ -512,9 +543,11 @@ func (m *Manager) buildContainerSpec(p *domain.Plugin, config map[string]string)
 	env["PLUGIN_PORT"] = fmt.Sprintf("%d", grpcPort)
 
 	labels := map[string]string{
-		"kleff.io/managed":   "true",
-		"kleff.io/plugin-id": p.ID,
-		"kleff.io/type":      p.Type,
+		"kleff.io/managed":                 "true",
+		"kleff.io/plugin-id":               p.ID,
+		"kleff.io/type":                    p.Type,
+		"com.docker.compose.project":       m.projectName,
+		"com.docker.compose.service":       p.ID,
 	}
 
 	return runtime.ContainerSpec{
@@ -696,6 +729,19 @@ func (m *Manager) HasIdentityProvider() bool {
 		}
 	}
 	return false
+}
+
+// IDPReady reports whether the active IDP plugin has completed capability discovery.
+// This is used to gate the frontend login page — returning false means the plugin
+// container is starting up and the caller should show a loading state.
+func (m *Manager) IDPReady() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.activeIDP == "" {
+		return false
+	}
+	caps, ok := m.capabilities[m.activeIDP]
+	return ok && caps[pluginsv1.CapabilityIdentityProvider]
 }
 
 // discoverRoutes calls GetRoutes on a plugin and registers them in the route table.
@@ -886,9 +932,11 @@ func (m *Manager) deployCompanions(ctx context.Context, manifest *domain.Catalog
 			Env:     c.Env,
 			Volumes: volumes,
 			Labels: map[string]string{
-				"kleff.io/managed":   "true",
-				"kleff.io/plugin-id": manifest.ID,
-				"kleff.io/companion": "true",
+				"kleff.io/managed":             "true",
+				"kleff.io/plugin-id":           manifest.ID,
+				"kleff.io/companion":           "true",
+				"com.docker.compose.project":   m.projectName,
+				"com.docker.compose.service":   c.ID,
 			},
 			RestartPolicy: runtime.RestartAlways,
 		}

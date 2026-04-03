@@ -61,6 +61,11 @@ type PluginManager interface {
 	// the CapabilityIdentityProvider capability.
 	HasIdentityProvider() bool
 
+	// IDPReady reports whether the active IDP plugin has completed capability
+	// discovery and is ready to serve auth requests. Use this to gate the
+	// frontend login page while the plugin container is starting up.
+	IDPReady() bool
+
 	// ── Plugin middleware (api.middleware capability) ──────────────────────────
 
 	// RunMiddleware calls OnRequest on every plugin that declared CapabilityAPIMiddleware.
