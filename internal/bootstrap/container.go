@@ -75,7 +75,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	catalogRegistry := pluginregistry.New(cfg.PluginRegistryURL, time.Duration(cfg.PluginRegistryTTL)*time.Second)
 	secretKey := pluginapplication.DeriveSecretKey(cfg.SecretKey)
 
-	pluginMgr := pluginapplication.New(pluginStore, catalogRegistry, rt, secretKey, logger)
+	pluginMgr := pluginapplication.New(pluginStore, catalogRegistry, rt, secretKey, cfg.PluginNetwork, logger)
 
 	// Start plugin manager: loads installed plugins from DB, ensures containers
 	// are running, starts health-check goroutine.
