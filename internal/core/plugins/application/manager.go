@@ -44,6 +44,7 @@ type Manager struct {
 	restarts     map[string]int
 	capabilities map[string]map[string]bool // plugin ID → set of declared capabilities
 	routes       []pluginRoute              // flat list of all declared plugin HTTP routes
+	activeIDP    string                     // cached from store; set by SetActiveIDP and loaded on Start
 }
 
 // pluginRoute is one entry in the route registry.
@@ -102,6 +103,13 @@ func (m *Manager) Start(ctx context.Context) error {
 				"id", p.ID, "error", err)
 			m.setStatus(p.ID, domain.PluginStatusError)
 		}
+	}
+
+	// Cache the active IDP so HasIdentityProvider() works before capability discovery runs.
+	if activeID, err := m.store.GetSetting(ctx, activeIDPSettingKey); err == nil && activeID != "" {
+		m.mu.Lock()
+		m.activeIDP = activeID
+		m.mu.Unlock()
 	}
 
 	go m.healthLoop(ctx)
@@ -358,7 +366,13 @@ func (m *Manager) getActiveIDP(ctx context.Context) (pluginsv1.IdentityPluginCli
 }
 
 func (m *Manager) SetActiveIDP(ctx context.Context, pluginID string) error {
-	return m.store.SetSetting(ctx, activeIDPSettingKey, pluginID)
+	if err := m.store.SetSetting(ctx, activeIDPSettingKey, pluginID); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.activeIDP = pluginID
+	m.mu.Unlock()
+	return nil
 }
 
 func (m *Manager) ValidateToken(ctx context.Context, token string) (*pluginsv1.TokenClaims, error) {
@@ -682,10 +696,15 @@ func (m *Manager) clearCapabilities(id string) {
 	m.mu.Unlock()
 }
 
-// HasIdentityProvider reports whether any active plugin declared CapabilityIdentityProvider.
+// HasIdentityProvider reports whether an IDP plugin has been configured.
+// It returns true as soon as SetActiveIDP is called — before capability discovery
+// completes — so the frontend doesn't redirect back to setup while the plugin starts.
 func (m *Manager) HasIdentityProvider() bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.activeIDP != "" {
+		return true
+	}
 	for id := range m.capabilities {
 		if m.capabilities[id][pluginsv1.CapabilityIdentityProvider] {
 			return true

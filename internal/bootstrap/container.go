@@ -10,6 +10,8 @@ import (
 	// PostgreSQL driver — blank import registers the "pgx" driver with database/sql.
 	_ "github.com/jackc/pgx/v5/stdlib"
 
+	"github.com/kleffio/platform/internal/database"
+
 	// Domain module HTTP handlers
 	adminhttp "github.com/kleffio/platform/internal/core/admin/adapters/http"
 	audithttp "github.com/kleffio/platform/internal/core/audit/adapters/http"
@@ -56,6 +58,10 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	db, err := openDatabase(cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	if err := database.Migrate(db, logger); err != nil {
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
 	// ── Plugin system ─────────────────────────────────────────────────────────
