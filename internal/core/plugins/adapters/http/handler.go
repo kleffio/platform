@@ -255,7 +255,7 @@ func (h *Handler) handleRemove(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.manager.Remove(r.Context(), id); err != nil {
 		h.logger.Warn("remove plugin failed", "id", id, "error", err)
-		commonhttp.Error(w, err)
+		commonhttp.Error(w, domain.NewBadRequest(err.Error()))
 		return
 	}
 	commonhttp.NoContent(w)
