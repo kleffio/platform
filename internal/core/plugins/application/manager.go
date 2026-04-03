@@ -194,6 +194,7 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 
 	m.setStatus(p.ID, domain.PluginStatusRunning)
 	p.Status = domain.PluginStatusRunning
+	m.discoverCapabilities(ctx, p.ID)
 	m.logger.Info("plugin installed", "id", p.ID, "image", p.Image)
 
 	return p, nil
@@ -653,6 +654,20 @@ func (m *Manager) discoverCapabilities(ctx context.Context, id string) {
 	caps := make(map[string]bool, len(resp.Capabilities))
 	for _, c := range resp.Capabilities {
 		caps[c] = true
+	}
+
+	// Enforce tag-based permissions: strip any capability the plugin's manifest
+	// tags do not permit. Plugins with no layer tags are unrestricted (nil).
+	if manifest, err := m.registry.GetManifest(ctx, id); err == nil && manifest != nil {
+		if permitted := permittedCapabilities(manifest.Tags); permitted != nil {
+			for c := range caps {
+				if !permitted[c] {
+					m.logger.Warn("plugin capability denied by tag permissions",
+						"plugin", id, "capability", c)
+					delete(caps, c)
+				}
+			}
+		}
 	}
 
 	m.mu.Lock()
