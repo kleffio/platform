@@ -405,6 +405,12 @@ func (m *Manager) SetActiveIDP(ctx context.Context, pluginID string) error {
 	return nil
 }
 
+func (m *Manager) GetActiveIDPID() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.activeIDP
+}
+
 func (m *Manager) ValidateToken(ctx context.Context, token string) (*pluginsv1.TokenClaims, error) {
 	idp, err := m.getActiveIDP(ctx)
 	if err != nil {
@@ -925,11 +931,25 @@ func (m *Manager) deployCompanions(ctx context.Context, manifest *domain.Catalog
 			volumes = append(volumes, runtime.VolumeMount{Name: v.Name, Target: v.Target})
 		}
 
+		ports := make([]runtime.PortMapping, 0, len(c.Ports))
+		for _, p := range c.Ports {
+			proto := p.Protocol
+			if proto == "" {
+				proto = "tcp"
+			}
+			ports = append(ports, runtime.PortMapping{
+				ContainerPort: p.ContainerPort,
+				HostPort:      p.HostPort,
+				Protocol:      proto,
+			})
+		}
+
 		spec := runtime.ContainerSpec{
 			ID:      c.ID,
 			Image:   c.Image,
 			Command: c.Command,
 			Env:     c.Env,
+			Ports:   ports,
 			Volumes: volumes,
 			Labels: map[string]string{
 				"kleff.io/managed":             "true",

@@ -37,6 +37,9 @@ type PluginManager interface {
 	// SetActiveIDP designates a plugin as the active identity provider.
 	SetActiveIDP(ctx context.Context, pluginID string) error
 
+	// GetActiveIDPID returns the ID of the currently active IDP plugin, or "" if none.
+	GetActiveIDPID() string
+
 	// Login authenticates a user via the active IDP plugin.
 	// Returns ErrNoIDP if no active IDP is configured.
 	Login(ctx context.Context, username, password string) (*pluginsv1.TokenSet, error)

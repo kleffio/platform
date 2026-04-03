@@ -40,6 +40,9 @@ type CompanionSpec struct {
 	// Env is a set of static environment variables injected into the companion.
 	Env map[string]string `json:"env,omitempty"`
 
+	// Ports exposes companion container ports on the host.
+	Ports []CompanionPort `json:"ports,omitempty"`
+
 	// Volumes declares named volumes mounted into the companion for persistence.
 	Volumes []CompanionVolume `json:"volumes,omitempty"`
 
@@ -53,6 +56,13 @@ type CompanionSpec struct {
 	// this value as the SkipIfEnv env var so the plugin always has a valid URL.
 	// Example: "http://keycloak:8080"
 	InternalAddr string `json:"internalAddr,omitempty"`
+}
+
+// CompanionPort maps a container port to an optional fixed host port.
+type CompanionPort struct {
+	ContainerPort int    `json:"container"`
+	HostPort      int    `json:"host,omitempty"` // 0 = auto-assign
+	Protocol      string `json:"protocol,omitempty"` // default: "tcp"
 }
 
 // CompanionVolume maps a named Docker volume to a path inside the companion container.

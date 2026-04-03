@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,24 +111,33 @@ func (r *Registry) GetManifest(ctx context.Context, pluginID string) (*domain.Ca
 
 // Refresh forces a re-fetch from the remote registry.
 func (r *Registry) Refresh(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.url, nil)
-	if err != nil {
-		return fmt.Errorf("plugin registry: build request: %w", err)
-	}
+	var body []byte
 
-	resp, err := r.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("plugin registry: fetch catalog: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("plugin registry: unexpected status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB max
-	if err != nil {
-		return fmt.Errorf("plugin registry: read body: %w", err)
+	if strings.HasPrefix(r.url, "file://") {
+		path := strings.TrimPrefix(r.url, "file://")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("plugin registry: read file: %w", err)
+		}
+		body = data
+	} else {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.url, nil)
+		if err != nil {
+			return fmt.Errorf("plugin registry: build request: %w", err)
+		}
+		resp, err := r.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("plugin registry: fetch catalog: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("plugin registry: unexpected status %d", resp.StatusCode)
+		}
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+		if err != nil {
+			return fmt.Errorf("plugin registry: read body: %w", err)
+		}
+		body = data
 	}
 
 	var manifests []*domain.CatalogManifest
