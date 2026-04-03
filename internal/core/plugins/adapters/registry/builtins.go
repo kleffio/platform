@@ -26,7 +26,8 @@ var builtinCatalog = []*domain.CatalogManifest{
 			"Only enable if your provider supports the ROPC grant.\n\n" +
 			"### User registration\n" +
 			"This plugin does not create users — manage accounts through your identity provider's admin interface.",
-		Tags:            []string{"oidc", "oauth2", "sso", "enterprise", "external"},
+		Tags:            []string{"oidc", "oauth2", "sso", "enterprise", "external", "backend", "identity"},
+		Capabilities:    []string{"identity.provider"},
 		Author:          "Kleff",
 		Repo:            "https://github.com/kleffio/plugins/idp-oidc",
 		Docs:            "https://docs.kleff.io/plugins/idp-oidc",
@@ -84,7 +85,8 @@ var builtinCatalog = []*domain.CatalogManifest{
 			"2. Create a confidential client with **Direct access grants** enabled.\n" +
 			"3. Create an admin service account or use the master realm admin credentials.\n" +
 			"4. Fill in the config fields below and click Install.",
-		Tags:            []string{"self-hosted", "sso", "enterprise", "open-source"},
+		Tags:            []string{"self-hosted", "sso", "enterprise", "open-source", "frontend", "backend", "identity"},
+		Capabilities:    []string{"identity.provider", "ui.manifest"},
 		Author:          "Kleff",
 		Repo:            "https://github.com/kleffio/plugins/idp-keycloak",
 		Docs:            "https://docs.kleff.io/plugins/idp-keycloak",
