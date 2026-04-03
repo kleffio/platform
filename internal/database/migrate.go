@@ -77,7 +77,7 @@ func runMigration(db *sql.DB, name, sql string) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(context.Background(), sql); err != nil {
 		return err
