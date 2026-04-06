@@ -103,6 +103,7 @@ func (h *AuthHandler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		commonhttp.Success(w, map[string]any{
 			"enabled":        false,
 			"setup_required": !h.manager.HasIdentityProvider(),
+			"ready":          false,
 		})
 		return
 	}
@@ -113,6 +114,7 @@ func (h *AuthHandler) handleConfig(w http.ResponseWriter, r *http.Request) {
 		"jwks_uri":  cfg.JwksURI,
 		"scopes":    cfg.Scopes,
 		"auth_mode": cfg.AuthMode,
+		"ready":     true,
 	})
 }
 

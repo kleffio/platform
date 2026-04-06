@@ -137,7 +137,14 @@ func (h *Handler) handleListInstalled(w http.ResponseWriter, r *http.Request) {
 		commonhttp.Error(w, err)
 		return
 	}
-	commonhttp.Success(w, map[string]any{"plugins": toResponses(plugins)})
+	activeID := h.manager.GetActiveIDPID()
+	responses := toResponses(plugins)
+	for i := range responses {
+		if responses[i].ID == activeID {
+			responses[i].IsActiveIDP = true
+		}
+	}
+	commonhttp.Success(w, map[string]any{"plugins": responses})
 }
 
 func (h *Handler) handleGetPlugin(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +206,7 @@ func (h *Handler) handleInstall(w http.ResponseWriter, r *http.Request) {
 	p, err := h.manager.Install(installCtx, manifest, req.Config)
 	if err != nil {
 		h.logger.Warn("install plugin failed", "id", req.ID, "error", err)
-		commonhttp.Error(w, err)
+		commonhttp.Error(w, domain.NewBadRequest(err.Error()))
 		return
 	}
 	commonhttp.Created(w, toResponse(p))
@@ -255,7 +262,7 @@ func (h *Handler) handleRemove(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.manager.Remove(r.Context(), id); err != nil {
 		h.logger.Warn("remove plugin failed", "id", id, "error", err)
-		commonhttp.Error(w, err)
+		commonhttp.Error(w, domain.NewBadRequest(err.Error()))
 		return
 	}
 	commonhttp.NoContent(w)
@@ -282,7 +289,7 @@ func (h *Handler) handleSetActive(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.manager.SetActiveIDP(r.Context(), id); err != nil {
 		h.logger.Warn("set active IDP failed", "id", id, "error", err)
-		commonhttp.Error(w, err)
+		commonhttp.Error(w, domain.NewBadRequest(err.Error()))
 		return
 	}
 	commonhttp.NoContent(w)
@@ -303,6 +310,7 @@ type pluginResponse struct {
 	Status      plugindomain.PluginStatus `json:"status"`
 	InstalledAt string                    `json:"installed_at"`
 	UpdatedAt   string                    `json:"updated_at"`
+	IsActiveIDP bool                      `json:"is_active_idp"`
 }
 
 func toResponse(p *plugindomain.Plugin) pluginResponse {
