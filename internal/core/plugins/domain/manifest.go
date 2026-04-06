@@ -9,6 +9,7 @@ type CatalogManifest struct {
 	Description     string          `json:"description"`
 	LongDescription string          `json:"longDescription,omitempty"`
 	Tags            []string        `json:"tags,omitempty"`
+	Capabilities    []string        `json:"capabilities,omitempty"`
 	Author          string          `json:"author"`
 	Repo            string          `json:"repo"`
 	Docs            string          `json:"docs,omitempty"`
