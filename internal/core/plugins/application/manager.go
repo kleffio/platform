@@ -173,8 +173,37 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 		return nil, fmt.Errorf("install plugin: save: %w", err)
 	}
 
-	m.setStatus(p.ID, domain.PluginStatusDisabled)
-	m.logger.Info("plugin installed (not started — activate to run)", "id", p.ID, "image", p.Image)
+	m.setStatus(p.ID, domain.PluginStatusInstalling)
+
+	// Deploy companion containers declared in the manifest (e.g. Keycloak server).
+	if err := m.deployCompanions(ctx, manifest, config); err != nil {
+		m.setStatus(p.ID, domain.PluginStatusError)
+		return nil, fmt.Errorf("install plugin: deploy companions: %w", err)
+	}
+
+	// For each companion that was deployed (not skipped), inject its internal
+	// address so the plugin container always has a valid URL to reach it.
+	for _, c := range manifest.Companions {
+		if c.SkipIfEnv != "" && c.InternalAddr != "" && config[c.SkipIfEnv] == "" {
+			config[c.SkipIfEnv] = c.InternalAddr
+		}
+	}
+
+	spec := m.buildContainerSpec(p, config)
+	if err := m.rt.Deploy(ctx, spec); err != nil {
+		m.setStatus(p.ID, domain.PluginStatusError)
+		return nil, fmt.Errorf("install plugin: deploy: %w", err)
+	}
+
+	if err := m.pool.Dial(ctx, p.ID, grpcAddr); err != nil {
+		m.setStatus(p.ID, domain.PluginStatusError)
+		return nil, fmt.Errorf("install plugin: dial gRPC: %w", err)
+	}
+
+	m.setStatus(p.ID, domain.PluginStatusRunning)
+	p.Status = domain.PluginStatusRunning
+	m.discoverCapabilities(ctx, p.ID)
+	m.logger.Info("plugin installed", "id", p.ID, "image", p.Image)
 
 	return p, nil
 }
@@ -744,6 +773,20 @@ func (m *Manager) discoverCapabilities(ctx context.Context, id string) {
 	caps := make(map[string]bool, len(resp.Capabilities))
 	for _, c := range resp.Capabilities {
 		caps[c] = true
+	}
+
+	// Enforce tag-based permissions: strip any capability the plugin's manifest
+	// tags do not permit. Plugins with no layer tags are unrestricted (nil).
+	if manifest, err := m.registry.GetManifest(ctx, id); err == nil && manifest != nil {
+		if permitted := permittedCapabilities(manifest.Tags); permitted != nil {
+			for c := range caps {
+				if !permitted[c] {
+					m.logger.Warn("plugin capability denied by tag permissions",
+						"plugin", id, "capability", c)
+					delete(caps, c)
+				}
+			}
+		}
 	}
 
 	m.mu.Lock()
