@@ -95,4 +95,7 @@ type ConfigField struct {
 
 	// Options is the list of choices for type "select".
 	Options []string `json:"options,omitempty"`
+
+	// Advanced indicates if the field should be tucked away in advanced settings
+	Advanced bool `json:"advanced,omitempty"`
 }
