@@ -76,41 +76,38 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 			continue
 		}
 
-		// 3. Fetch and upsert blueprints
-		for _, bpID := range ref.Blueprints {
-			bpData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/blueprints/%s.json", ref.ID, bpID))
+		// 3. Fetch blueprint.json and construct.json from each version folder
+		for _, version := range ref.Versions {
+			bpData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/%s/blueprint.json", ref.ID, version))
 			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s: %v", ref.ID, bpID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s: %v", ref.ID, version, err))
 				continue
 			}
 
 			var wb wireBlueprint
 			if err := json.Unmarshal(bpData, &wb); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s parse: %v", ref.ID, bpID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s parse: %v", ref.ID, version, err))
 				continue
 			}
 
 			if err := store.UpsertBlueprint(ctx, wb.toDomain()); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s upsert: %v", ref.ID, bpID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s upsert: %v", ref.ID, version, err))
 			}
-		}
 
-		// 4. Fetch and upsert constructs
-		for _, cID := range ref.Constructs {
-			cData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/constructs/%s.json", ref.ID, cID))
+			cData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/%s/construct.json", ref.ID, version))
 			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s: %v", ref.ID, cID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s: %v", ref.ID, version, err))
 				continue
 			}
 
 			var wc wireConstruct
 			if err := json.Unmarshal(cData, &wc); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s parse: %v", ref.ID, cID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s parse: %v", ref.ID, version, err))
 				continue
 			}
 
 			if err := store.UpsertConstruct(ctx, wc.toDomain()); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s upsert: %v", ref.ID, cID, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s upsert: %v", ref.ID, version, err))
 			}
 		}
 	}
@@ -164,11 +161,10 @@ type crateIndex struct {
 	Crates []crateRef `json:"crates"`
 }
 
-// crateRef is an entry in index.json listing a crate's blueprint and construct IDs.
+// crateRef is an entry in index.json listing a crate's version folder names.
 type crateRef struct {
-	ID         string   `json:"id"`
-	Blueprints []string `json:"blueprints"`
-	Constructs []string `json:"constructs"`
+	ID       string   `json:"id"`
+	Versions []string `json:"versions"`
 }
 
 // wireCrate maps crate.json from the registry.
