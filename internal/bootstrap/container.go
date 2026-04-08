@@ -16,6 +16,9 @@ import (
 	adminhttp "github.com/kleffio/platform/internal/core/admin/adapters/http"
 	audithttp "github.com/kleffio/platform/internal/core/audit/adapters/http"
 	billinghttp "github.com/kleffio/platform/internal/core/billing/adapters/http"
+	cataloghttp "github.com/kleffio/platform/internal/core/catalog/adapters/http"
+	catalogpersistence "github.com/kleffio/platform/internal/core/catalog/adapters/persistence"
+	catalogregistry "github.com/kleffio/platform/internal/core/catalog/adapters/registry"
 	deploymentshttp "github.com/kleffio/platform/internal/core/deployments/adapters/http"
 	nodeshttp "github.com/kleffio/platform/internal/core/nodes/adapters/http"
 	organizationshttp "github.com/kleffio/platform/internal/core/organizations/adapters/http"
@@ -43,6 +46,7 @@ type Container struct {
 	// HTTP handler groups per domain module
 	AuthHandler          *pluginhttp.AuthHandler
 	SetupHandler         *pluginhttp.SetupHandler
+	CatalogHandler       *cataloghttp.Handler
 	OrganizationsHandler *organizationshttp.Handler
 	DeploymentsHandler   *deploymentshttp.Handler
 	NodesHandler         *nodeshttp.Handler
@@ -84,6 +88,17 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		// Non-fatal: server continues even if some plugins fail to start.
 	}
 
+	catalogStore := catalogpersistence.NewPostgresCatalogStore(db)
+
+	// Sync crates, blueprints, and constructs from the remote crate registry.
+	// Non-fatal: if the registry is unreachable on startup, existing DB data is used.
+	crateRegistry := catalogregistry.New(cfg.CrateRegistryURL)
+	if err := crateRegistry.Sync(context.Background(), catalogStore); err != nil {
+		logger.Warn("crate registry sync warning", "error", err)
+	} else {
+		logger.Info("crate registry synced")
+	}
+
 	return &Container{
 		Config:        cfg,
 		Logger:        logger,
@@ -93,6 +108,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
 		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
+		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(logger),
 		NodesHandler:         nodeshttp.NewHandler(logger),

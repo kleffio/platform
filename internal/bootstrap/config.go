@@ -45,6 +45,13 @@ type Config struct {
 	// JWKSUri is the OIDC JWKS endpoint for JWT signature verification.
 	JWKSUri string
 
+	// ── Crate registry ────────────────────────────────────────────────────────
+
+	// CrateRegistryURL is the base URL of the crate registry.
+	// Default: https://raw.githubusercontent.com/kleffio/crate-registry/main
+	// For local dev, use: file:///absolute/path/to/crate-registry
+	CrateRegistryURL string
+
 	// ── Plugin system ─────────────────────────────────────────────────────────
 
 	// RuntimeProvider selects the container runtime for plugin management.
@@ -85,6 +92,8 @@ func LoadConfig() (*Config, error) {
 		IntrospectClientID:     config.String("INTROSPECT_CLIENT_ID", ""),
 		IntrospectClientSecret: config.String("INTROSPECT_CLIENT_SECRET", ""),
 		JWKSUri:                config.String("JWKS_URI", ""),
+
+		CrateRegistryURL: config.String("CRATE_REGISTRY_URL", ""),
 
 		RuntimeProvider:   config.String("RUNTIME_PROVIDER", "docker"),
 		PluginRegistryURL: config.String("PLUGIN_REGISTRY_URL", ""),
