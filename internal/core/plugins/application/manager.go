@@ -123,13 +123,18 @@ var _ ports.PluginManager = (*Manager)(nil)
 
 // Install deploys a new plugin container, persists config, and dials gRPC.
 func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest, config map[string]string) (*domain.Plugin, error) {
-	// Separate plain config from secrets.
+	// Separate plain config from secrets, applying manifest defaults for any
+	// field the caller did not explicitly provide.
 	plainCfg := map[string]string{}
 	secretCfg := map[string]string{}
 	for _, field := range manifest.Config {
 		val, ok := config[field.Key]
-		if !ok {
-			continue
+		if !ok || val == "" {
+			if field.Default != "" {
+				val = field.Default
+			} else {
+				continue
+			}
 		}
 		if field.Type == "secret" {
 			secretCfg[field.Key] = val
@@ -158,8 +163,8 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 		GRPCAddr:    grpcAddr,
 		Config:      configJSON,
 		Secrets:     secretsJSON,
-		Enabled:     true,
-		Status:      domain.PluginStatusInstalling,
+		Enabled:     false, // containers are started only when the plugin is activated
+		Status:      domain.PluginStatusDisabled,
 		InstalledAt: time.Now().UTC(),
 		UpdatedAt:   time.Now().UTC(),
 	}
@@ -197,6 +202,7 @@ func (m *Manager) Install(ctx context.Context, manifest *domain.CatalogManifest,
 
 	m.setStatus(p.ID, domain.PluginStatusRunning)
 	p.Status = domain.PluginStatusRunning
+	m.discoverCapabilities(ctx, p.ID)
 	m.logger.Info("plugin installed", "id", p.ID, "image", p.Image)
 
 	return p, nil
@@ -221,7 +227,7 @@ func (m *Manager) Remove(ctx context.Context, pluginID string) error {
 		}
 		idpCount := 0
 		for _, pl := range all {
-			if pl.Type == "idp" && pl.Enabled {
+			if pl.Type == "idp" {
 				idpCount++
 			}
 		}
@@ -396,12 +402,62 @@ func (m *Manager) getActiveIDP(ctx context.Context) (pluginsv1.IdentityPluginCli
 }
 
 func (m *Manager) SetActiveIDP(ctx context.Context, pluginID string) error {
+	// Capture the previous active IDP before switching.
+	m.mu.RLock()
+	prevIDP := m.activeIDP
+	m.mu.RUnlock()
+
 	if err := m.store.SetSetting(ctx, activeIDPSettingKey, pluginID); err != nil {
 		return err
 	}
 	m.mu.Lock()
 	m.activeIDP = pluginID
 	m.mu.Unlock()
+
+	// Ensure the newly active IDP is enabled and running.
+	if newPlugin, err := m.store.FindByID(ctx, pluginID); err == nil {
+		if !newPlugin.Enabled {
+			newPlugin.Enabled = true
+			newPlugin.UpdatedAt = time.Now().UTC()
+			_ = m.store.Save(ctx, newPlugin)
+		}
+		if runErr := m.ensureRunning(ctx, newPlugin); runErr != nil {
+			m.logger.Warn("SetActiveIDP: ensure new IDP running", "id", pluginID, "error", runErr)
+		}
+	}
+
+	// Stop the previous IDP's containers when switching to a different plugin.
+	// Named Docker volumes are preserved (ContainerRemove does not pass RemoveVolumes),
+	// so all data (e.g. Keycloak realm, users) survives and is restored on re-activation.
+	if prevIDP != "" && prevIDP != pluginID {
+		_ = m.pool.Close(prevIDP)
+
+		if err := m.rt.Remove(ctx, "kleff-"+prevIDP); err != nil {
+			m.logger.Warn("SetActiveIDP: remove old IDP container", "id", prevIDP, "error", err)
+		}
+
+		// Stop companion containers (e.g. Keycloak server) for the old IDP.
+		if manifest, err := m.registry.GetManifest(ctx, prevIDP); err == nil && manifest != nil {
+			for _, c := range manifest.Companions {
+				if stopErr := m.rt.Remove(ctx, c.ID); stopErr != nil {
+					m.logger.Warn("SetActiveIDP: remove old companion", "companion", c.ID, "plugin", prevIDP, "error", stopErr)
+				}
+			}
+		}
+
+		// Mark old plugin disabled so the health loop does not restart its containers.
+		if oldPlugin, err := m.store.FindByID(ctx, prevIDP); err == nil {
+			oldPlugin.Enabled = false
+			oldPlugin.UpdatedAt = time.Now().UTC()
+			if saveErr := m.store.Save(ctx, oldPlugin); saveErr != nil {
+				m.logger.Warn("SetActiveIDP: save old plugin disabled", "id", prevIDP, "error", saveErr)
+			}
+		}
+		m.setStatus(prevIDP, domain.PluginStatusDisabled)
+		m.clearCapabilities(prevIDP)
+		m.logger.Info("SetActiveIDP: stopped previous IDP", "previous", prevIDP, "active", pluginID)
+	}
+
 	return nil
 }
 
@@ -501,8 +557,14 @@ func (m *Manager) RefreshToken(ctx context.Context, refreshToken string) (*plugi
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 func (m *Manager) ensureRunning(ctx context.Context, p *domain.Plugin) error {
+	// Fetch manifest once — used for companion deployment and default env injection.
+	var manifest *domain.CatalogManifest
+	if mf, err := m.registry.GetManifest(ctx, p.ID); err == nil && mf != nil {
+		manifest = mf
+	}
+
 	// Ensure companion containers (e.g. Keycloak server) are running first.
-	if manifest, err := m.registry.GetManifest(ctx, p.ID); err == nil && manifest != nil {
+	if manifest != nil {
 		secrets, _ := m.decryptSecrets(p.Secrets)
 		cfg := mergeConfig(p.Config, secrets)
 		if err := m.deployCompanions(ctx, manifest, cfg); err != nil {
@@ -520,6 +582,17 @@ func (m *Manager) ensureRunning(ctx context.Context, p *domain.Plugin) error {
 		// Decode secrets for env injection.
 		secrets, _ := m.decryptSecrets(p.Secrets)
 		allConfig := mergeConfig(p.Config, secrets)
+
+		// Apply manifest defaults for any key not already in config.
+		// This ensures internal/bootstrap env vars reach the plugin container
+		// even when they were not stored at install time.
+		if manifest != nil {
+			for _, field := range manifest.Config {
+				if _, ok := allConfig[field.Key]; !ok && field.Default != "" {
+					allConfig[field.Key] = field.Default
+				}
+			}
+		}
 
 		spec := m.buildContainerSpec(p, allConfig)
 		if err := m.rt.Deploy(ctx, spec); err != nil {
@@ -619,6 +692,14 @@ func (m *Manager) checkPlugin(ctx context.Context, p *domain.Plugin) {
 
 		secrets, _ := m.decryptSecrets(p.Secrets)
 		allConfig := mergeConfig(p.Config, secrets)
+		// Apply manifest defaults for any key not already stored.
+		if manifest, err := m.registry.GetManifest(ctx, p.ID); err == nil && manifest != nil {
+			for _, field := range manifest.Config {
+				if _, ok := allConfig[field.Key]; !ok && field.Default != "" {
+					allConfig[field.Key] = field.Default
+				}
+			}
+		}
 		spec := m.buildContainerSpec(p, allConfig)
 
 		if restartErr := m.rt.Deploy(ctx, spec); restartErr != nil {
@@ -692,6 +773,20 @@ func (m *Manager) discoverCapabilities(ctx context.Context, id string) {
 	caps := make(map[string]bool, len(resp.Capabilities))
 	for _, c := range resp.Capabilities {
 		caps[c] = true
+	}
+
+	// Enforce tag-based permissions: strip any capability the plugin's manifest
+	// tags do not permit. Plugins with no layer tags are unrestricted (nil).
+	if manifest, err := m.registry.GetManifest(ctx, id); err == nil && manifest != nil {
+		if permitted := permittedCapabilities(manifest.Tags); permitted != nil {
+			for c := range caps {
+				if !permitted[c] {
+					m.logger.Warn("plugin capability denied by tag permissions",
+						"plugin", id, "capability", c)
+					delete(caps, c)
+				}
+			}
+		}
 	}
 
 	m.mu.Lock()
