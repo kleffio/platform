@@ -9,6 +9,7 @@ type CatalogManifest struct {
 	Description     string          `json:"description"`
 	LongDescription string          `json:"longDescription,omitempty"`
 	Tags            []string        `json:"tags,omitempty"`
+	Capabilities    []string        `json:"capabilities,omitempty"`
 	Author          string          `json:"author"`
 	Repo            string          `json:"repo"`
 	Docs            string          `json:"docs,omitempty"`
@@ -95,4 +96,7 @@ type ConfigField struct {
 
 	// Options is the list of choices for type "select".
 	Options []string `json:"options,omitempty"`
+
+	// Advanced indicates if the field should be tucked away in advanced settings
+	Advanced bool `json:"advanced,omitempty"`
 }

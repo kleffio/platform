@@ -95,14 +95,23 @@ func (h *AuthHandler) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/auth/config
 func (h *AuthHandler) handleConfig(w http.ResponseWriter, r *http.Request) {
+	// Always return a fresh response — the active IDP can change at runtime and
+	// we don't want a browser-cached stale config redirecting to the wrong IDP.
+	w.Header().Set("Cache-Control", "no-store")
 	cfg, err := h.manager.GetOIDCConfig(r.Context())
 	if err != nil {
 		h.logger.Warn("get OIDC config failed", "error", err)
 	}
-	if cfg == nil {
+	// An IDP plugin is active but its container hasn't finished starting yet —
+	// the gRPC call failed (cfg == nil) or returned empty authority/client_id.
+	// Return ready:false so the frontend keeps polling every 3 s.
+	// Use HasIdentityProvider() for enabled so the login page shows the spinner
+	// rather than the form (which would show even when no IDP is configured).
+	if cfg == nil || cfg.Authority == "" || cfg.ClientID == "" {
+		hasIDP := h.manager.HasIdentityProvider()
 		commonhttp.Success(w, map[string]any{
-			"enabled":        false,
-			"setup_required": !h.manager.HasIdentityProvider(),
+			"enabled":        hasIDP,
+			"setup_required": !hasIDP,
 			"ready":          false,
 		})
 		return
