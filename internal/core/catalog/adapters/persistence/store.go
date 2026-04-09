@@ -106,7 +106,6 @@ func (s *PostgresCatalogStore) ListBlueprints(ctx context.Context, crateID strin
 	if crateID != "" {
 		query += fmt.Sprintf(" AND crate_id = $%d", i)
 		args = append(args, crateID)
-		i++
 	}
 	query += " ORDER BY name"
 
