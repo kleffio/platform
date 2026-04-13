@@ -48,5 +48,3 @@ require (
 )
 
 replace github.com/kleff/go-common => ./packages
-
-replace github.com/kleffio/plugin-sdk-go => ../plugins/plugin-sdk-go
