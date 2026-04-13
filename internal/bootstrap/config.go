@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/kleffio/platform/internal/shared/config"
@@ -70,6 +71,11 @@ type Config struct {
 	// SecretKey is the AES-256 key (any length; hashed with SHA-256) for
 	// encrypting plugin secrets at rest. Required in production.
 	SecretKey string
+
+	// CompanionEnv holds env vars to inject into every companion container.
+	// Populated from COMPANION_* env vars on the API: COMPANION_SMTP_HOST → SMTP_HOST.
+	// Manifest-declared env vars take precedence over these globals.
+	CompanionEnv map[string]string
 }
 
 // LoadConfig reads and validates configuration from environment variables.
@@ -99,6 +105,8 @@ func LoadConfig() (*Config, error) {
 		cfg.CORSAllowedOrigins = splitCSV(raw)
 	}
 
+	cfg.CompanionEnv = companionEnvFromOS()
+
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
 	}
@@ -113,6 +121,20 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// companionEnvFromOS scans os.Environ() for vars prefixed with "COMPANION_",
+// strips the prefix, and returns them as a map for injection into companions.
+func companionEnvFromOS() map[string]string {
+	const prefix = "COMPANION_"
+	out := make(map[string]string)
+	for _, kv := range os.Environ() {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && strings.HasPrefix(k, prefix) {
+			out[strings.TrimPrefix(k, prefix)] = v
+		}
+	}
+	return out
 }
 
 func splitCSV(s string) []string {

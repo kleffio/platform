@@ -69,6 +69,10 @@ type ContainerSpec struct {
 	// Volumes declares named Docker volumes to mount into the container.
 	Volumes []VolumeMount
 
+	// User overrides the container's default user (e.g. "root", "1000", "1000:1000").
+	// Empty means use the image default.
+	User string
+
 	// Resources constrains CPU and memory (optional, 0 = unlimited).
 	Resources ResourceLimits
 

@@ -115,6 +115,7 @@ func (r *Runtime) Deploy(ctx context.Context, spec runtime.ContainerSpec) error 
 			Env:          env,
 			Labels:       labels,
 			ExposedPorts: exposedPorts,
+			User:         spec.User,
 		},
 		hostCfg,
 		&network.NetworkingConfig{},

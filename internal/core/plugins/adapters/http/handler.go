@@ -134,7 +134,8 @@ func (h *Handler) handleRefreshCatalog(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleListInstalled(w http.ResponseWriter, r *http.Request) {
 	plugins, err := h.manager.ListPlugins(r.Context())
 	if err != nil {
-		commonhttp.Error(w, err)
+		h.logger.Error("list installed plugins", "error", err)
+		commonhttp.Error(w, domain.NewInternal(err))
 		return
 	}
 	activeID := h.manager.GetActiveIDPID()

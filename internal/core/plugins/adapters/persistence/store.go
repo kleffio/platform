@@ -34,7 +34,7 @@ func (s *PostgresPluginStore) FindByID(ctx context.Context, id string) (*plugind
 	}
 	const q = `
 		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
-		       config, secrets, enabled, installed_at, updated_at
+		       config, secrets, enabled, installed_at, updated_at, dependencies
 		FROM plugins WHERE id = $1`
 	return scanPlugin(s.db.QueryRowContext(ctx, q, id))
 }
@@ -45,7 +45,7 @@ func (s *PostgresPluginStore) ListAll(ctx context.Context) ([]*plugindomain.Plug
 	}
 	const q = `
 		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
-		       config, secrets, enabled, installed_at, updated_at
+		       config, secrets, enabled, installed_at, updated_at, dependencies
 		FROM plugins ORDER BY installed_at DESC`
 	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *PostgresPluginStore) ListByType(ctx context.Context, pluginType string)
 	}
 	const q = `
 		SELECT id, type, display_name, image, version, grpc_addr, frontend_url,
-		       config, secrets, enabled, installed_at, updated_at
+		       config, secrets, enabled, installed_at, updated_at, dependencies
 		FROM plugins WHERE type = $1 ORDER BY installed_at DESC`
 	rows, err := s.db.QueryContext(ctx, q, pluginType)
 	if err != nil {
@@ -78,8 +78,8 @@ func (s *PostgresPluginStore) Save(ctx context.Context, p *plugindomain.Plugin) 
 	const q = `
 		INSERT INTO plugins
 		    (id, type, display_name, image, version, grpc_addr, frontend_url,
-		     config, secrets, enabled, installed_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		     config, secrets, enabled, installed_at, updated_at, dependencies)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (id) DO UPDATE SET
 		    display_name  = EXCLUDED.display_name,
 		    image         = EXCLUDED.image,
@@ -89,17 +89,23 @@ func (s *PostgresPluginStore) Save(ctx context.Context, p *plugindomain.Plugin) 
 		    config        = EXCLUDED.config,
 		    secrets       = EXCLUDED.secrets,
 		    enabled       = EXCLUDED.enabled,
-		    updated_at    = EXCLUDED.updated_at`
+		    updated_at    = EXCLUDED.updated_at,
+		    dependencies  = EXCLUDED.dependencies`
 
 	var frontendURL sql.NullString
 	if p.FrontendURL != "" {
 		frontendURL = sql.NullString{String: p.FrontendURL, Valid: true}
 	}
 
-	_, err := s.db.ExecContext(ctx, q,
+	depsJSON, err := json.Marshal(p.Dependencies)
+	if err != nil {
+		return fmt.Errorf("plugin store: marshal dependencies: %w", err)
+	}
+
+	_, err = s.db.ExecContext(ctx, q,
 		p.ID, p.Type, p.DisplayName, p.Image, p.Version, p.GRPCAddr, frontendURL,
 		json.RawMessage(p.Config), json.RawMessage(p.Secrets),
-		p.Enabled, p.InstalledAt, p.UpdatedAt,
+		p.Enabled, p.InstalledAt, p.UpdatedAt, json.RawMessage(depsJSON),
 	)
 	if err != nil {
 		return fmt.Errorf("plugin store: save %q: %w", p.ID, err)
@@ -164,12 +170,13 @@ func scanPlugin(row *sql.Row) (*plugindomain.Plugin, error) {
 		frontendURL sql.NullString
 		config      []byte
 		secrets     []byte
+		deps        []byte
 		installedAt time.Time
 		updatedAt   time.Time
 	)
 	err := row.Scan(
 		&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr, &frontendURL,
-		&config, &secrets, &p.Enabled, &installedAt, &updatedAt,
+		&config, &secrets, &p.Enabled, &installedAt, &updatedAt, &deps,
 	)
 	if err == sql.ErrNoRows {
 		return nil, domain.ErrNotFound
@@ -183,6 +190,9 @@ func scanPlugin(row *sql.Row) (*plugindomain.Plugin, error) {
 	p.InstalledAt = installedAt.UTC()
 	p.UpdatedAt = updatedAt.UTC()
 	p.Status = plugindomain.PluginStatusUnknown
+	if len(deps) > 0 {
+		_ = json.Unmarshal(deps, &p.Dependencies)
+	}
 	return &p, nil
 }
 
@@ -194,12 +204,13 @@ func scanPlugins(rows *sql.Rows) ([]*plugindomain.Plugin, error) {
 			frontendURL sql.NullString
 			config      []byte
 			secrets     []byte
+			deps        []byte
 			installedAt time.Time
 			updatedAt   time.Time
 		)
 		err := rows.Scan(
 			&p.ID, &p.Type, &p.DisplayName, &p.Image, &p.Version, &p.GRPCAddr, &frontendURL,
-			&config, &secrets, &p.Enabled, &installedAt, &updatedAt,
+			&config, &secrets, &p.Enabled, &installedAt, &updatedAt, &deps,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan plugin: %w", err)
@@ -210,6 +221,9 @@ func scanPlugins(rows *sql.Rows) ([]*plugindomain.Plugin, error) {
 		p.InstalledAt = installedAt.UTC()
 		p.UpdatedAt = updatedAt.UTC()
 		p.Status = plugindomain.PluginStatusUnknown
+		if len(deps) > 0 {
+			_ = json.Unmarshal(deps, &p.Dependencies)
+		}
 		out = append(out, &p)
 	}
 	return out, rows.Err()
