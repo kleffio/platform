@@ -15,13 +15,18 @@ type CatalogManifest struct {
 	Docs            string          `json:"docs,omitempty"`
 	Image           string          `json:"image"`
 	Version         string          `json:"version"`
+	FrontendURL     string          `json:"frontendUrl,omitempty"`
 	MinKleffVersion string          `json:"minKleffVersion,omitempty"`
 	License         string          `json:"license,omitempty"`
 	Verified        bool            `json:"verified"`
 	Logo            string          `json:"logo,omitempty"`
 	Screenshots     []string        `json:"screenshots,omitempty"`
-	Config          []ConfigField   `json:"config,omitempty"`
-	Companions      []CompanionSpec `json:"companions,omitempty"`
+	Config          []ConfigField    `json:"config,omitempty"`
+	Volumes         []CompanionVolume `json:"volumes,omitempty"`
+	Companions      []CompanionSpec  `json:"companions,omitempty"`
+	// Dependencies lists plugin IDs that must be installed and enabled before
+	// this plugin can be installed. Example: ["billing-framework"].
+	Dependencies []string `json:"dependencies,omitempty"`
 }
 
 // CompanionSpec declares a dependency container that the platform spins up
@@ -57,6 +62,19 @@ type CompanionSpec struct {
 	// this value as the SkipIfEnv env var so the plugin always has a valid URL.
 	// Example: "http://keycloak:8080"
 	InternalAddr string `json:"internalAddr,omitempty"`
+
+	// WaitForTCP, if set, is a "host:port" address the platform will poll with
+	// TCP dial attempts before deploying this companion. Use this to ensure a
+	// dependency companion (e.g. a database) is fully accepting connections
+	// before the dependent service starts.
+	// Example: "zitadel-postgres:5432"
+	WaitForTCP string `json:"waitForTCP,omitempty"`
+
+	// User overrides the container's default user (UID or "name" or "name:group").
+	// Leave empty to use the image default. Set to "root" when the companion
+	// needs to write to a Docker volume that is owned by root (e.g. ZITADEL
+	// writing /machinekey/pat.token on first-instance init).
+	User string `json:"user,omitempty"`
 }
 
 // CompanionPort maps a container port to an optional fixed host port.

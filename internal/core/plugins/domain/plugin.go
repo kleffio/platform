@@ -59,6 +59,10 @@ type Plugin struct {
 	// Status is the in-memory runtime status (not persisted).
 	Status PluginStatus
 
+	// Dependencies is the list of plugin IDs this plugin declared as required at
+	// install time (copied from the catalog manifest).
+	Dependencies []string
+
 	InstalledAt time.Time
 	UpdatedAt   time.Time
 }

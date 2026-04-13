@@ -60,6 +60,19 @@ type PluginManager interface {
 	// Returns ErrNoIDP if no active IDP is configured.
 	RefreshToken(ctx context.Context, refreshToken string) (*pluginsv1.TokenSet, error)
 
+	// ChangePassword verifies the current password and sets a new one via the active IDP plugin.
+	ChangePassword(ctx context.Context, userID, currentPassword, newPassword string) error
+
+	// ListSessions returns all active sessions for a user via the active IDP plugin.
+	ListSessions(ctx context.Context, userID, currentSessionID string) ([]*pluginsv1.Session, error)
+
+	// RevokeSession terminates a specific session via the active IDP plugin.
+	RevokeSession(ctx context.Context, userID, sessionID string) error
+
+	// RevokeAllSessions terminates every session for a user except the current one.
+	// currentSessionID is the session that should be preserved.
+	RevokeAllSessions(ctx context.Context, userID, currentSessionID string) error
+
 	// HasIdentityProvider reports whether at least one active plugin declared
 	// the CapabilityIdentityProvider capability.
 	HasIdentityProvider() bool
