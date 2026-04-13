@@ -34,6 +34,9 @@ func buildRouter(c *Container) http.Handler {
 	// Public setup routes — only active before the first IDP is installed.
 	c.SetupHandler.RegisterPublicRoutes(r)
 
+	// Catalog (crates + blueprints) is public — no login needed to browse.
+	c.CatalogHandler.RegisterRoutes(r)
+
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(c.TokenVerifier))
