@@ -1,0 +1,1 @@
+ALTER TABLE deployments ADD COLUMN IF NOT EXISTS blueprint_id TEXT NOT NULL DEFAULT '';

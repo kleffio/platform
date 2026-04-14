@@ -83,6 +83,11 @@ type Config struct {
 	// Populated from COMPANION_* env vars on the API: COMPANION_SMTP_HOST → SMTP_HOST.
 	// Manifest-declared env vars take precedence over these globals.
 	CompanionEnv map[string]string
+
+	// RedisURL is the connection URL for the daemon job queue.
+	// If empty, job enqueueing is disabled (daemon integration skipped).
+	// Example: redis://localhost:6379/0
+	RedisURL string
 }
 
 // LoadConfig reads and validates configuration from environment variables.
@@ -108,6 +113,7 @@ func LoadConfig() (*Config, error) {
 		PluginRegistryTTL: config.Int("PLUGIN_REGISTRY_TTL", 3600),
 		PluginNamespace:   config.String("PLUGIN_NAMESPACE", "kleff"),
 		SecretKey:         config.String("SECRET_KEY", ""),
+		RedisURL:          config.String("REDIS_URL", ""),
 	}
 
 	if raw := config.String("CORS_ALLOWED_ORIGINS", ""); raw != "" {

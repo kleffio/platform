@@ -20,12 +20,15 @@ type Deployment struct {
 	ID             string
 	OrganizationID string
 	GameServerID   string
+	ServerName     string           // human-readable name; becomes container/pod name
+	BlueprintID    string
 	Version        string
 	Status         DeploymentStatus
 	InitiatedBy    string // user ID
 	StartedAt      time.Time
 	FinishedAt     *time.Time
 	FailureReason  string
+	Address        string // host:port reported by daemon after provisioning
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

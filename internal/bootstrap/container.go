@@ -19,7 +19,9 @@ import (
 	cataloghttp "github.com/kleffio/platform/internal/core/catalog/adapters/http"
 	catalogpersistence "github.com/kleffio/platform/internal/core/catalog/adapters/persistence"
 	catalogregistry "github.com/kleffio/platform/internal/core/catalog/adapters/registry"
+	deploymentscommands "github.com/kleffio/platform/internal/core/deployments/application/commands"
 	deploymentshttp "github.com/kleffio/platform/internal/core/deployments/adapters/http"
+	deploymentspersistence "github.com/kleffio/platform/internal/core/deployments/adapters/persistence"
 	nodeshttp "github.com/kleffio/platform/internal/core/nodes/adapters/http"
 	organizationshttp "github.com/kleffio/platform/internal/core/organizations/adapters/http"
 	pluginhttp "github.com/kleffio/platform/internal/core/plugins/adapters/http"
@@ -28,6 +30,7 @@ import (
 	pluginapplication "github.com/kleffio/platform/internal/core/plugins/application"
 	usagehttp "github.com/kleffio/platform/internal/core/usage/adapters/http"
 	"github.com/kleffio/platform/internal/shared/middleware"
+	"github.com/kleffio/platform/internal/shared/queue"
 	"github.com/kleffio/platform/internal/shared/runtime"
 	runtimedocker "github.com/kleffio/platform/internal/shared/runtime/docker"
 	runtimek8s "github.com/kleffio/platform/internal/shared/runtime/kubernetes"
@@ -99,6 +102,13 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		logger.Info("crate registry synced")
 	}
 
+	// ── Deployments ───────────────────────────────────────────────────────────
+
+	deploymentStore := deploymentspersistence.NewPostgresDeploymentStore(db)
+	enqueuer := buildEnqueuer(cfg, logger)
+	createDeployment := deploymentscommands.NewCreateDeploymentHandler(deploymentStore, catalogStore, enqueuer)
+	serverAction := deploymentscommands.NewServerActionHandler(deploymentStore, catalogStore, enqueuer)
+
 	return &Container{
 		Config:        cfg,
 		Logger:        logger,
@@ -110,7 +120,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
-		DeploymentsHandler:   deploymentshttp.NewHandler(logger),
+		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
 		NodesHandler:         nodeshttp.NewHandler(logger),
 		BillingHandler:       billinghttp.NewHandler(logger),
 		UsageHandler:         usagehttp.NewHandler(logger),
@@ -118,6 +128,32 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		AdminHandler:         adminhttp.NewHandler(logger),
 		PluginsHandler:       pluginhttp.NewHandler(pluginMgr, catalogRegistry, logger),
 	}, nil
+}
+
+// buildEnqueuer returns a Redis enqueuer if REDIS_URL is set, otherwise a no-op.
+func buildEnqueuer(cfg *Config, logger *slog.Logger) queue.Enqueuer {
+	if cfg.RedisURL == "" {
+		logger.Warn("REDIS_URL not set — daemon job enqueueing disabled")
+		return &noopEnqueuer{}
+	}
+	enqueuer, err := queue.NewRedisEnqueuer(cfg.RedisURL)
+	if err != nil {
+		logger.Warn("failed to connect to Redis — daemon job enqueueing disabled", "error", err)
+		return &noopEnqueuer{}
+	}
+	logger.Info("daemon queue: Redis", "url", cfg.RedisURL)
+	return enqueuer
+}
+
+// noopEnqueuer silently drops jobs — used when Redis is not configured.
+type noopEnqueuer struct{}
+
+func (n *noopEnqueuer) Enqueue(_ context.Context, _ string, _ queue.WorkloadSpec) error {
+	return nil
+}
+
+func (n *noopEnqueuer) EnqueueAction(_ context.Context, _ string, _ queue.JobType, _ queue.WorkloadSpec) error {
+	return nil
 }
 
 // buildRuntimeAdapter constructs the appropriate RuntimeAdapter from config.
