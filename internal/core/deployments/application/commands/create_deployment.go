@@ -3,6 +3,7 @@ package commands
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"time"
 
 	catalogports "github.com/kleffio/platform/internal/core/catalog/ports"
@@ -54,12 +55,17 @@ func NewCreateDeploymentHandler(
 	}
 }
 
+var validContainerName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.\-]*$`)
+
 func (h *CreateDeploymentHandler) Handle(ctx context.Context, cmd CreateDeploymentCommand) (*CreateDeploymentResult, error) {
 	if cmd.BlueprintID == "" {
 		return nil, fmt.Errorf("blueprint_id is required")
 	}
 	if cmd.ServerName == "" {
 		return nil, fmt.Errorf("server_name is required")
+	}
+	if !validContainerName.MatchString(cmd.ServerName) {
+		return nil, fmt.Errorf("server_name %q is invalid: only letters, numbers, underscores, dots, and hyphens are allowed (no spaces)", cmd.ServerName)
 	}
 
 	// Look up blueprint and its construct.
