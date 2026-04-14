@@ -28,6 +28,9 @@ func buildRouter(c *Container) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// Internal daemon-facing routes — shared secret only, no user auth.
+	c.DeploymentsHandler.RegisterInternalRoutes(r)
+
 	// Public auth routes (login, register, config) — no bearer token required.
 	c.AuthHandler.RegisterPublicRoutes(r)
 
