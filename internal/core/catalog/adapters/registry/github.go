@@ -40,9 +40,11 @@ func New(baseURL string) *CrateRegistry {
 	}
 }
 
-// Sync fetches the full registry (index → crates → blueprints → constructs) and
-// upserts everything into the provided store. Errors on individual files are
-// logged but do not abort the full sync — partial data is better than nothing.
+// Sync fetches the full registry (index → crates → blueprints) and upserts
+// everything into the provided store. blueprint.json now contains all deployment
+// fields (image, env, ports, outputs) previously in construct.json, so a
+// Construct is derived from each blueprint during sync.
+// Errors on individual files are logged but do not abort the full sync.
 func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository) error {
 	// 1. Fetch index.json
 	indexData, err := r.fetch(ctx, "index.json")
@@ -79,7 +81,10 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 			continue
 		}
 
-		// 3. Fetch blueprint.json and construct.json from each version folder
+		// 3. Fetch blueprint.json from each version folder.
+		// blueprint.json now carries both user-facing config and deployment
+		// fields (image, env, ports, outputs, runtime_hints overrides).
+		// A Construct is derived from it using crate-level runtime_hints as defaults.
 		for _, version := range ref.Versions {
 			bpData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/blueprint.json", cat, ref.ID, version))
 			if err != nil {
@@ -93,24 +98,14 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 				continue
 			}
 
-			if err := store.UpsertBlueprint(ctx, wb.toDomain()); err != nil {
+			// Optionally fetch entrypoint.sh — not all variants need a startup script.
+			var startupScript string
+			if scriptData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/entrypoint.sh", cat, ref.ID, version)); err == nil {
+				startupScript = string(scriptData)
+			}
+
+			if err := store.UpsertBlueprint(ctx, wb.toDomain(wc.RuntimeHints, startupScript)); err != nil {
 				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s upsert: %v", cat, ref.ID, version, err))
-			}
-
-			cData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/construct.json", cat, ref.ID, version))
-			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s: %v", cat, ref.ID, version, err))
-				continue
-			}
-
-			var wcon wireConstruct
-			if err := json.Unmarshal(cData, &wcon); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s parse: %v", cat, ref.ID, version, err))
-				continue
-			}
-
-			if err := store.UpsertConstruct(ctx, wcon.toDomain()); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s upsert: %v", cat, ref.ID, version, err))
 			}
 		}
 	}
@@ -193,14 +188,16 @@ type crateRef struct {
 }
 
 // wireCrate maps crate.json from the registry.
-// Category is no longer stored in crate.json — it is derived from the directory path.
+// Category is derived from the directory path, not stored in crate.json.
+// RuntimeHints holds the crate-level defaults that blueprint.json may partially override.
 type wireCrate struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Logo        string   `json:"logo"`
-	Tags        []string `json:"tags"`
-	Official    bool     `json:"official"`
+	ID           string             `json:"id"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	Logo         string             `json:"logo"`
+	Tags         []string           `json:"tags"`
+	Official     bool               `json:"official"`
+	RuntimeHints domain.RuntimeHints `json:"runtime_hints"`
 }
 
 func (w wireCrate) toDomain(category string) *domain.Crate {
@@ -215,63 +212,144 @@ func (w wireCrate) toDomain(category string) *domain.Crate {
 	}
 }
 
-// wireBlueprint maps blueprints/*.json from the registry.
-// Note: "crate" and "construct" are the registry field names, not crate_id/construct_id.
-type wireBlueprint struct {
-	ID          string                              `json:"id"`
-	Crate       string                              `json:"crate"`
-	Construct   string                              `json:"construct"`
-	Name        string                              `json:"name"`
-	Description string                              `json:"description"`
-	Logo        string                              `json:"logo"`
-	Version     string                              `json:"version"`
-	Official    bool                                `json:"official"`
-	Config      []domain.ConfigField                `json:"config"`
-	Resources   domain.Resources                    `json:"resources"`
-	Extensions  map[string]domain.BlueprintExtension `json:"extensions"`
+// wireBlueprintExtension holds both the user-facing fields (enabled, sources) and
+// the technical deployment fields (install_method, install_path, etc.) in a single
+// merged object from blueprint.json. toDomain() and toConstruct() split them apart.
+type wireBlueprintExtension struct {
+	// User-facing
+	Enabled bool     `json:"enabled"`
+	Sources []string `json:"sources"`
+	// Technical / deployment
+	InstallMethod   string `json:"install_method"`
+	InstallPath     string `json:"install_path"`
+	FileExtension   string `json:"file_extension,omitempty"`
+	ConfigPath      string `json:"config_path,omitempty"`
+	RequiresRestart bool   `json:"requires_restart"`
 }
 
-func (w wireBlueprint) toDomain() *domain.Blueprint {
+// wireRuntimeHintsOverride holds optional per-blueprint overrides for runtime_hints.
+// Pointer fields let us detect which values are actually set vs omitted in JSON.
+type wireRuntimeHintsOverride struct {
+	KubernetesStrategy *string `json:"kubernetes_strategy"`
+	ExposeUDP          *bool   `json:"expose_udp"`
+	PersistentStorage  *bool   `json:"persistent_storage"`
+	StoragePath        *string `json:"storage_path"`
+	StorageGB          *int    `json:"storage_gb"`
+	HealthCheckPath    *string `json:"health_check_path"`
+	HealthCheckPort    *int    `json:"health_check_port"`
+}
+
+// wireBlueprint maps blueprint.json from the registry. blueprint.json now contains
+// all deployment fields previously in construct.json (image, env, ports, outputs,
+// runtime_hints overrides). The construct field references a shared runtime ID
+// (e.g. "java-21", "steamcmd") rather than a per-game construct.
+type wireBlueprint struct {
+	ID           string                            `json:"id"`
+	Crate        string                            `json:"crate"`
+	Construct    string                            `json:"construct"`
+	Name         string                            `json:"name"`
+	Description  string                            `json:"description"`
+	Logo         string                            `json:"logo"`
+	Version      string                            `json:"version"`
+	Official     bool                              `json:"official"`
+	Image        string                            `json:"image"`
+	Images       map[string]string                 `json:"images"`
+	Env          map[string]string                 `json:"env"`
+	Ports        []domain.Port                     `json:"ports"`
+	RuntimeHints wireRuntimeHintsOverride          `json:"runtime_hints"`
+	Outputs      []domain.Output                   `json:"outputs"`
+	Config       []domain.ConfigField              `json:"config"`
+	Resources    domain.Resources                  `json:"resources"`
+	Extensions   map[string]wireBlueprintExtension `json:"extensions"`
+}
+
+func (w wireBlueprint) toDomain(crateHints domain.RuntimeHints, startupScript string) *domain.Blueprint {
+	var bpExts map[string]domain.BlueprintExtension
+	if len(w.Extensions) > 0 {
+		bpExts = make(map[string]domain.BlueprintExtension, len(w.Extensions))
+		for k, v := range w.Extensions {
+			bpExts[k] = domain.BlueprintExtension{
+				Enabled: v.Enabled,
+				Sources: v.Sources,
+			}
+		}
+	}
 	return &domain.Blueprint{
-		ID:          w.ID,
-		CrateID:     w.Crate,
-		ConstructID: w.Construct,
-		Name:        w.Name,
-		Description: w.Description,
-		Logo:        w.Logo,
-		Version:     w.Version,
-		Official:    w.Official,
-		Config:      w.Config,
-		Resources:   w.Resources,
-		Extensions:  w.Extensions,
+		ID:            w.ID,
+		CrateID:       w.Crate,
+		ConstructID:   w.Construct,
+		Name:          w.Name,
+		Description:   w.Description,
+		Logo:          w.Logo,
+		Version:       w.Version,
+		Official:      w.Official,
+		Image:         w.Image,
+		Images:        w.Images,
+		Env:           w.Env,
+		Ports:         w.Ports,
+		Outputs:       w.Outputs,
+		RuntimeHints:  mergeRuntimeHints(crateHints, w.RuntimeHints),
+		StartupScript: startupScript,
+		Config:        w.Config,
+		Resources:     w.Resources,
+		Extensions:    bpExts,
 	}
 }
 
-// wireConstruct maps constructs/*.json from the registry.
-type wireConstruct struct {
-	ID           string                               `json:"id"`
-	Crate        string                               `json:"crate"`
-	Blueprint    string                               `json:"blueprint"`
-	Image        string                               `json:"image"`
-	Version      string                               `json:"version"`
-	Env          map[string]string                    `json:"env"`
-	Ports        []domain.Port                        `json:"ports"`
-	RuntimeHints domain.RuntimeHints                  `json:"runtime_hints"`
-	Extensions   map[string]domain.ConstructExtension `json:"extensions"`
-	Outputs      []domain.Output                      `json:"outputs"`
-}
-
-func (w wireConstruct) toDomain() *domain.Construct {
+// toConstruct derives a domain.Construct from the merged blueprint.json,
+// applying blueprint-level runtime_hints overrides on top of crate defaults.
+func (w wireBlueprint) toConstruct(crateHints domain.RuntimeHints) *domain.Construct {
+	var conExts map[string]domain.ConstructExtension
+	if len(w.Extensions) > 0 {
+		conExts = make(map[string]domain.ConstructExtension, len(w.Extensions))
+		for k, v := range w.Extensions {
+			conExts[k] = domain.ConstructExtension{
+				InstallMethod:   v.InstallMethod,
+				InstallPath:     v.InstallPath,
+				FileExtension:   v.FileExtension,
+				ConfigPath:      v.ConfigPath,
+				RequiresRestart: v.RequiresRestart,
+			}
+		}
+	}
 	return &domain.Construct{
 		ID:           w.ID,
 		CrateID:      w.Crate,
-		BlueprintID:  w.Blueprint,
+		BlueprintID:  w.ID,
 		Image:        w.Image,
 		Version:      w.Version,
 		Env:          w.Env,
 		Ports:        w.Ports,
-		RuntimeHints: w.RuntimeHints,
-		Extensions:   w.Extensions,
+		RuntimeHints: mergeRuntimeHints(crateHints, w.RuntimeHints),
+		Extensions:   conExts,
 		Outputs:      w.Outputs,
 	}
+}
+
+// mergeRuntimeHints applies blueprint-level overrides onto crate-level defaults.
+// Only fields explicitly present in the blueprint's runtime_hints JSON are overridden.
+func mergeRuntimeHints(base domain.RuntimeHints, override wireRuntimeHintsOverride) domain.RuntimeHints {
+	result := base
+	if override.KubernetesStrategy != nil {
+		result.KubernetesStrategy = *override.KubernetesStrategy
+	}
+	if override.ExposeUDP != nil {
+		result.ExposeUDP = *override.ExposeUDP
+	}
+	if override.PersistentStorage != nil {
+		result.PersistentStorage = *override.PersistentStorage
+	}
+	if override.StoragePath != nil {
+		result.StoragePath = *override.StoragePath
+	}
+	if override.StorageGB != nil {
+		result.StorageGB = *override.StorageGB
+	}
+	if override.HealthCheckPath != nil {
+		result.HealthCheckPath = *override.HealthCheckPath
+	}
+	if override.HealthCheckPort != nil {
+		result.HealthCheckPort = *override.HealthCheckPort
+	}
+	return result
 }

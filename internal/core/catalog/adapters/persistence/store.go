@@ -98,7 +98,7 @@ func (s *PostgresCatalogStore) UpsertCrate(ctx context.Context, c *domain.Crate)
 func (s *PostgresCatalogStore) ListBlueprints(ctx context.Context, crateID string) ([]*domain.Blueprint, error) {
 	query := `
 		SELECT id, crate_id, construct_id, name, description, logo, version,
-		       official, config, resources, extensions, created_at, updated_at
+		       official, config, resources, extensions, image, images, env, ports, outputs, runtime_hints, startup_script, created_at, updated_at
 		FROM blueprints WHERE 1=1`
 	args := []any{}
 	i := 1
@@ -129,7 +129,7 @@ func (s *PostgresCatalogStore) ListBlueprints(ctx context.Context, crateID strin
 func (s *PostgresCatalogStore) GetBlueprint(ctx context.Context, id string) (*domain.Blueprint, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, crate_id, construct_id, name, description, logo, version,
-		       official, config, resources, extensions, created_at, updated_at
+		       official, config, resources, extensions, image, images, env, ports, outputs, runtime_hints, startup_script, created_at, updated_at
 		FROM blueprints WHERE id = $1`, id)
 
 	b, err := scanBlueprint(row)
@@ -155,24 +155,51 @@ func (s *PostgresCatalogStore) UpsertBlueprint(ctx context.Context, b *domain.Bl
 	if err != nil {
 		return fmt.Errorf("upsert blueprint: marshal extensions: %w", err)
 	}
+	envJSON, err := json.Marshal(b.Env)
+	if err != nil {
+		return fmt.Errorf("upsert blueprint: marshal env: %w", err)
+	}
+	portsJSON, err := json.Marshal(b.Ports)
+	if err != nil {
+		return fmt.Errorf("upsert blueprint: marshal ports: %w", err)
+	}
+	outputsJSON, err := json.Marshal(b.Outputs)
+	if err != nil {
+		return fmt.Errorf("upsert blueprint: marshal outputs: %w", err)
+	}
+	hintsJSON, err := json.Marshal(b.RuntimeHints)
+	if err != nil {
+		return fmt.Errorf("upsert blueprint: marshal runtime_hints: %w", err)
+	}
+	imagesJSON, err := json.Marshal(b.Images)
+	if err != nil {
+		return fmt.Errorf("upsert blueprint: marshal images: %w", err)
+	}
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO blueprints (id, crate_id, construct_id, name, description, logo, version, official, config, resources, extensions, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+		INSERT INTO blueprints (id, crate_id, construct_id, name, description, logo, version, official, config, resources, extensions, image, images, env, ports, outputs, runtime_hints, startup_script, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW())
 		ON CONFLICT (id) DO UPDATE SET
-			crate_id     = EXCLUDED.crate_id,
-			construct_id = EXCLUDED.construct_id,
-			name         = EXCLUDED.name,
-			description  = EXCLUDED.description,
-			logo         = EXCLUDED.logo,
-			version      = EXCLUDED.version,
-			official     = EXCLUDED.official,
-			config       = EXCLUDED.config,
-			resources    = EXCLUDED.resources,
-			extensions   = EXCLUDED.extensions,
-			updated_at   = NOW()`,
+			crate_id       = EXCLUDED.crate_id,
+			construct_id   = EXCLUDED.construct_id,
+			name           = EXCLUDED.name,
+			description    = EXCLUDED.description,
+			logo           = EXCLUDED.logo,
+			version        = EXCLUDED.version,
+			official       = EXCLUDED.official,
+			config         = EXCLUDED.config,
+			resources      = EXCLUDED.resources,
+			extensions     = EXCLUDED.extensions,
+			image          = EXCLUDED.image,
+			images         = EXCLUDED.images,
+			env            = EXCLUDED.env,
+			ports          = EXCLUDED.ports,
+			outputs        = EXCLUDED.outputs,
+			runtime_hints  = EXCLUDED.runtime_hints,
+			startup_script = EXCLUDED.startup_script,
+			updated_at     = NOW()`,
 		b.ID, b.CrateID, b.ConstructID, b.Name, b.Description, b.Logo, b.Version, b.Official,
-		configJSON, resourcesJSON, extJSON,
+		configJSON, resourcesJSON, extJSON, b.Image, imagesJSON, envJSON, portsJSON, outputsJSON, hintsJSON, b.StartupScript,
 	)
 	return err
 }
@@ -182,7 +209,7 @@ func (s *PostgresCatalogStore) UpsertBlueprint(ctx context.Context, b *domain.Bl
 func (s *PostgresCatalogStore) ListConstructs(ctx context.Context, crateID, blueprintID string) ([]*domain.Construct, error) {
 	query := `
 		SELECT id, crate_id, blueprint_id, image, version, env, ports,
-		       runtime_hints, extensions, outputs, created_at, updated_at
+		       runtime_hints, extensions, outputs, startup_script, created_at, updated_at
 		FROM constructs WHERE 1=1`
 	args := []any{}
 	i := 1
@@ -218,7 +245,7 @@ func (s *PostgresCatalogStore) ListConstructs(ctx context.Context, crateID, blue
 func (s *PostgresCatalogStore) GetConstruct(ctx context.Context, id string) (*domain.Construct, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, crate_id, blueprint_id, image, version, env, ports,
-		       runtime_hints, extensions, outputs, created_at, updated_at
+		       runtime_hints, extensions, outputs, startup_script, created_at, updated_at
 		FROM constructs WHERE id = $1`, id)
 
 	c, err := scanConstruct(row)
@@ -254,8 +281,8 @@ func (s *PostgresCatalogStore) UpsertConstruct(ctx context.Context, c *domain.Co
 	}
 
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO constructs (id, crate_id, blueprint_id, image, version, env, ports, runtime_hints, extensions, outputs, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+		INSERT INTO constructs (id, crate_id, blueprint_id, image, version, env, ports, runtime_hints, extensions, outputs, startup_script, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 		ON CONFLICT (id) DO UPDATE SET
 			crate_id      = EXCLUDED.crate_id,
 			blueprint_id  = EXCLUDED.blueprint_id,
@@ -265,10 +292,11 @@ func (s *PostgresCatalogStore) UpsertConstruct(ctx context.Context, c *domain.Co
 			ports         = EXCLUDED.ports,
 			runtime_hints = EXCLUDED.runtime_hints,
 			extensions    = EXCLUDED.extensions,
-			outputs       = EXCLUDED.outputs,
-			updated_at    = NOW()`,
+			outputs        = EXCLUDED.outputs,
+			startup_script = EXCLUDED.startup_script,
+			updated_at     = NOW()`,
 		c.ID, c.CrateID, c.BlueprintID, c.Image, c.Version,
-		envJSON, portsJSON, hintsJSON, extJSON, outputsJSON,
+		envJSON, portsJSON, hintsJSON, extJSON, outputsJSON, c.StartupScript,
 	)
 	return err
 }
@@ -299,15 +327,17 @@ func scanCrate(s scanner) (*domain.Crate, error) {
 
 func scanBlueprint(s scanner) (*domain.Blueprint, error) {
 	var (
-		b                                        domain.Blueprint
-		configJSON, resourcesJSON, extensionsJSON []byte
-		createdAt, updatedAt                     time.Time
+		b                                                              domain.Blueprint
+		configJSON, resourcesJSON, extensionsJSON                     []byte
+		envJSON, portsJSON, outputsJSON, hintsJSON, imagesJSON        []byte
+		createdAt, updatedAt                                          time.Time
 	)
 
 	err := s.Scan(
 		&b.ID, &b.CrateID, &b.ConstructID, &b.Name, &b.Description, &b.Logo,
 		&b.Version, &b.Official,
 		&configJSON, &resourcesJSON, &extensionsJSON,
+		&b.Image, &imagesJSON, &envJSON, &portsJSON, &outputsJSON, &hintsJSON, &b.StartupScript,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -325,6 +355,23 @@ func scanBlueprint(s scanner) (*domain.Blueprint, error) {
 	}
 	if err := json.Unmarshal(extensionsJSON, &b.Extensions); err != nil {
 		return nil, fmt.Errorf("unmarshal blueprint extensions: %w", err)
+	}
+	if err := json.Unmarshal(envJSON, &b.Env); err != nil {
+		return nil, fmt.Errorf("unmarshal blueprint env: %w", err)
+	}
+	if err := json.Unmarshal(portsJSON, &b.Ports); err != nil {
+		return nil, fmt.Errorf("unmarshal blueprint ports: %w", err)
+	}
+	if err := json.Unmarshal(outputsJSON, &b.Outputs); err != nil {
+		return nil, fmt.Errorf("unmarshal blueprint outputs: %w", err)
+	}
+	if err := json.Unmarshal(hintsJSON, &b.RuntimeHints); err != nil {
+		return nil, fmt.Errorf("unmarshal blueprint runtime_hints: %w", err)
+	}
+	if len(imagesJSON) > 0 {
+		if err := json.Unmarshal(imagesJSON, &b.Images); err != nil {
+			return nil, fmt.Errorf("unmarshal blueprint images: %w", err)
+		}
 	}
 
 	return &b, nil
