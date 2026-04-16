@@ -93,6 +93,9 @@ func (h *ProvisionWorkloadHandler) Handle(ctx context.Context, cmd ProvisionWork
 	if err != nil {
 		return nil, fmt.Errorf("project not found: %w", err)
 	}
+	if cmd.OrganizationID != "" && project.OrganizationID != cmd.OrganizationID {
+		return nil, fmt.Errorf("forbidden: project does not belong to caller organization")
+	}
 	if strings.TrimSpace(cmd.OwnerID) == "" {
 		cmd.OwnerID = project.OrganizationID
 	}

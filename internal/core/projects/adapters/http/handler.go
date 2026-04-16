@@ -1,7 +1,9 @@
 package http
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -48,7 +50,11 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	orgID := organizationIDFromRequest(r)
+	orgID, err := organizationIDFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 	if err := h.repo.EnsureOrganization(r.Context(), orgID, "Organization "+orgID); err != nil {
 		h.logger.Error("ensure organization", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to ensure organization"})
@@ -97,9 +103,14 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 		return
 	}
-	orgID := req.OrganizationID
-	if orgID == "" {
-		orgID = organizationIDFromRequest(r)
+	orgID, err := organizationIDFromRequest(r)
+	if err != nil {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
+	if req.OrganizationID != "" && req.OrganizationID != orgID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: organization mismatch"})
+		return
 	}
 	if err := h.repo.EnsureOrganization(r.Context(), orgID, "Organization "+orgID); err != nil {
 		h.logger.Error("ensure organization", "error", err)
@@ -138,8 +149,16 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	project, err := h.repo.FindByID(r.Context(), id)
+	project, err := h.authorizedProject(r, id)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "forbidden") {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 		return
 	}
@@ -150,6 +169,14 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) listConnections(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
+	if _, err := h.authorizedProject(r, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 
 	conns, err := h.repo.ListConnections(r.Context(), projectID)
 	if err != nil {
@@ -165,6 +192,14 @@ func (h *Handler) listConnections(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
+	if _, err := h.authorizedProject(r, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 
 	var req struct {
 		SourceWorkloadID string `json:"source_workload_id"`
@@ -198,6 +233,15 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:        time.Now().UTC(),
 	}
 	if err := h.repo.CreateConnection(r.Context(), conn); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "source or target workload was not found in this project"})
+			return
+		}
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "project_connections_unique") || strings.Contains(lower, "duplicate key") {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "connection already exists"})
+			return
+		}
 		h.logger.Error("create connection", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create connection"})
 		return
@@ -208,6 +252,14 @@ func (h *Handler) createConnection(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
 	connID := chi.URLParam(r, "connID")
+	if _, err := h.authorizedProject(r, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 
 	// Verify it belongs to this project.
 	conn, err := h.repo.FindConnection(r.Context(), connID)
@@ -228,6 +280,14 @@ func (h *Handler) deleteConnection(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) listGraphNodes(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
+	if _, err := h.authorizedProject(r, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 
 	nodes, err := h.repo.ListGraphNodes(r.Context(), projectID)
 	if err != nil {
@@ -244,6 +304,14 @@ func (h *Handler) listGraphNodes(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) upsertGraphNode(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "id")
 	workloadID := chi.URLParam(r, "workloadID")
+	if _, err := h.authorizedProject(r, projectID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 
 	var req struct {
 		PositionX float64 `json:"position_x"`
@@ -262,6 +330,10 @@ func (h *Handler) upsertGraphNode(w http.ResponseWriter, r *http.Request) {
 		PositionY:  req.PositionY,
 	}
 	if err := h.repo.UpsertGraphNode(r.Context(), node); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workload was not found in this project"})
+			return
+		}
 		h.logger.Error("upsert graph node", "error", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save position"})
 		return
@@ -271,19 +343,49 @@ func (h *Handler) upsertGraphNode(w http.ResponseWriter, r *http.Request) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func organizationIDFromRequest(r *http.Request) string {
-	if v := strings.TrimSpace(r.URL.Query().Get("organization_id")); v != "" {
-		return v
+func organizationIDFromRequest(r *http.Request) (string, error) {
+	queryOrgID := strings.TrimSpace(r.URL.Query().Get("organization_id"))
+	headerOrgID := strings.TrimSpace(r.Header.Get("X-Organization-ID"))
+
+	if queryOrgID != "" && headerOrgID != "" && queryOrgID != headerOrgID {
+		return "", fmt.Errorf("forbidden: conflicting organization context")
 	}
-	if v := strings.TrimSpace(r.Header.Get("X-Organization-ID")); v != "" {
-		return v
+
+	requestedOrgID := queryOrgID
+	if requestedOrgID == "" {
+		requestedOrgID = headerOrgID
 	}
+
 	if claims, ok := middleware.ClaimsFromContext(r.Context()); ok {
 		if claims.Subject != "" {
-			return "org-" + normalizeSlug(claims.Subject)
+			callerOrgID := "org-" + normalizeSlug(claims.Subject)
+			if requestedOrgID != "" && requestedOrgID != callerOrgID {
+				return "", fmt.Errorf("forbidden: organization mismatch")
+			}
+			return callerOrgID, nil
 		}
 	}
-	return "org-default"
+
+	if requestedOrgID != "" {
+		return requestedOrgID, nil
+	}
+	return "org-default", nil
+}
+
+func (h *Handler) authorizedProject(r *http.Request, projectID string) (*domain.Project, error) {
+	project, err := h.repo.FindByID(r.Context(), projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	orgID, err := organizationIDFromRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	if orgID != "" && project.OrganizationID != orgID {
+		return nil, fmt.Errorf("forbidden: project does not belong to caller organization")
+	}
+	return project, nil
 }
 
 func normalizeSlug(s string) string {

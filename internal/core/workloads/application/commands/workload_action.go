@@ -15,10 +15,11 @@ import (
 )
 
 type WorkloadActionCommand struct {
-	ProjectID   string
-	WorkloadID  string
-	Action      queue.JobType
-	InitiatedBy string
+	OrganizationID string
+	ProjectID      string
+	WorkloadID     string
+	Action         queue.JobType
+	InitiatedBy    string
 }
 
 type WorkloadActionHandler struct {
@@ -64,6 +65,9 @@ func (h *WorkloadActionHandler) Handle(ctx context.Context, cmd WorkloadActionCo
 	project, err := h.projects.FindByID(ctx, cmd.ProjectID)
 	if err != nil {
 		return fmt.Errorf("project not found: %w", err)
+	}
+	if cmd.OrganizationID != "" && project.OrganizationID != cmd.OrganizationID {
+		return fmt.Errorf("forbidden: project does not belong to caller organization")
 	}
 
 	spec := ports.WorkloadSpec{

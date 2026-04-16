@@ -137,7 +137,7 @@ func (s *PostgresProjectStore) FindConnection(ctx context.Context, connectionID 
 }
 
 func (s *PostgresProjectStore) CreateConnection(ctx context.Context, conn *domain.Connection) error {
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO project_connections
 			(id, project_id, source_workload_id, target_workload_id, kind, label, created_at)
 		SELECT $1,$2,$3,$4,$5,$6,$7
@@ -148,8 +148,7 @@ func (s *PostgresProjectStore) CreateConnection(ctx context.Context, conn *domai
 		  AND EXISTS (
 			SELECT 1 FROM workloads w2
 			WHERE w2.id = $4 AND w2.project_id = $2
-		)
-		ON CONFLICT ON CONSTRAINT project_connections_unique DO NOTHING`,
+		)`,
 		conn.ID,
 		conn.ProjectID,
 		conn.SourceWorkloadID,
@@ -160,6 +159,13 @@ func (s *PostgresProjectStore) CreateConnection(ctx context.Context, conn *domai
 	)
 	if err != nil {
 		return fmt.Errorf("create connection: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("create connection rows affected: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -198,7 +204,7 @@ func (s *PostgresProjectStore) ListGraphNodes(ctx context.Context, projectID str
 }
 
 func (s *PostgresProjectStore) UpsertGraphNode(ctx context.Context, node *domain.GraphNode) error {
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO project_graph_nodes (id, project_id, workload_id, position_x, position_y, updated_at)
 		SELECT $1,$2,$3,$4,$5,$6
 		WHERE EXISTS (
@@ -218,6 +224,13 @@ func (s *PostgresProjectStore) UpsertGraphNode(ctx context.Context, node *domain
 	)
 	if err != nil {
 		return fmt.Errorf("upsert graph node: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("upsert graph node rows affected: %w", err)
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

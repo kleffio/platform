@@ -1,15 +1,19 @@
 package http
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	projectports "github.com/kleffio/platform/internal/core/projects/ports"
 	"github.com/kleffio/platform/internal/core/workloads/application/commands"
 	"github.com/kleffio/platform/internal/core/workloads/domain"
 	"github.com/kleffio/platform/internal/core/workloads/ports"
@@ -25,6 +29,7 @@ const (
 )
 
 type Handler struct {
+	projects  projectports.ProjectRepository
 	repo      ports.Repository
 	provision *commands.ProvisionWorkloadHandler
 	action    *commands.WorkloadActionHandler
@@ -32,8 +37,10 @@ type Handler struct {
 	logger    *slog.Logger
 }
 
-func NewHandler(repo ports.Repository, provision *commands.ProvisionWorkloadHandler, action *commands.WorkloadActionHandler, bus *events.Bus, logger *slog.Logger) *Handler {
-	return &Handler{repo: repo, provision: provision, action: action, bus: bus, logger: logger}
+var orgSlugCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
+
+func NewHandler(projects projectports.ProjectRepository, repo ports.Repository, provision *commands.ProvisionWorkloadHandler, action *commands.WorkloadActionHandler, bus *events.Bus, logger *slog.Logger) *Handler {
+	return &Handler{projects: projects, repo: repo, provision: provision, action: action, bus: bus, logger: logger}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -52,6 +59,15 @@ func (h *Handler) RegisterInternalRoutes(r chi.Router) {
 
 func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
+	orgID := callerOrganizationID(r.Context())
+	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 	var req struct {
 		OrganizationID string            `json:"organization_id"`
 		OwnerID        string            `json:"owner_id"`
@@ -90,7 +106,7 @@ func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 		initiatedBy = claims.Subject
 	}
 	res, err := h.provision.Handle(r.Context(), commands.ProvisionWorkloadCommand{
-		OrganizationID: req.OrganizationID,
+		OrganizationID: orgID,
 		ProjectID:      projectID,
 		OwnerID:        req.OwnerID,
 		ServerName:     req.ServerName,
@@ -118,6 +134,15 @@ func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
+	orgID := callerOrganizationID(r.Context())
+	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 	workloads, err := h.repo.ListByProject(r.Context(), projectID)
 	if err != nil {
 		h.logger.Error("list workloads", "error", err, "project_id", projectID)
@@ -132,6 +157,11 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 	workload, err := h.repo.FindByID(r.Context(), id)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workload not found"})
+		return
+	}
+	orgID := callerOrganizationID(r.Context())
+	if orgID != "" && workload.OrganizationID != orgID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: workload does not belong to caller organization"})
 		return
 	}
 	writeJSON(w, http.StatusOK, workload)
@@ -152,8 +182,19 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	status := domain.WorkloadState(req.Status)
-	if status == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status is required"})
+	if !isValidWorkloadState(status) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "status must be one of: pending, running, stopped, deleted, failed"})
+		return
+	}
+
+	existing, err := h.repo.FindByID(r.Context(), workloadID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "workload not found"})
+			return
+		}
+		h.logger.Error("load workload before status update", "error", err, "workload_id", workloadID)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist workload status"})
 		return
 	}
 
@@ -166,6 +207,14 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 	nodeID := req.NodeID
 	if claims, ok := middleware.NodeClaimsFromContext(r.Context()); ok {
 		nodeID = claims.NodeID
+	}
+	if nodeID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+		return
+	}
+	if existing.NodeID != "" && existing.NodeID != nodeID {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: workload is bound to a different node"})
+		return
 	}
 
 	update := domain.DaemonStatusUpdate{
@@ -218,16 +267,26 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) runAction(w http.ResponseWriter, r *http.Request, action queue.JobType) {
 	projectID := chi.URLParam(r, "projectID")
 	workloadID := chi.URLParam(r, "id")
+	orgID := callerOrganizationID(r.Context())
+	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
+			return
+		}
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
+		return
+	}
 	initiatedBy := ""
 	if claims, ok := middleware.ClaimsFromContext(r.Context()); ok {
 		initiatedBy = claims.Subject
 	}
 
 	err := h.action.Handle(r.Context(), commands.WorkloadActionCommand{
-		ProjectID:   projectID,
-		WorkloadID:  workloadID,
-		Action:      action,
-		InitiatedBy: initiatedBy,
+		OrganizationID: orgID,
+		ProjectID:      projectID,
+		WorkloadID:     workloadID,
+		Action:         action,
+		InitiatedBy:    initiatedBy,
 	})
 	if err != nil {
 		status := http.StatusBadRequest
@@ -248,4 +307,50 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func callerOrganizationID(ctx context.Context) string {
+	claims, ok := middleware.ClaimsFromContext(ctx)
+	if !ok || claims.Subject == "" {
+		return ""
+	}
+	return "org-" + normalizeOrgSlug(claims.Subject)
+}
+
+func normalizeOrgSlug(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "_", "-")
+	s = strings.ReplaceAll(s, " ", "-")
+	s = orgSlugCleaner.ReplaceAllString(s, "")
+	s = strings.Trim(s, "-")
+	if len(s) > 40 {
+		s = s[:40]
+	}
+	if s == "" {
+		return "default"
+	}
+	return s
+}
+
+func isValidWorkloadState(state domain.WorkloadState) bool {
+	switch state {
+	case domain.WorkloadPending, domain.WorkloadRunning, domain.WorkloadStopped, domain.WorkloadDeleted, domain.WorkloadFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) ensureProjectAccess(ctx context.Context, projectID, organizationID string) error {
+	if organizationID == "" || h.projects == nil {
+		return nil
+	}
+	project, err := h.projects.FindByID(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if project.OrganizationID != organizationID {
+		return fmt.Errorf("forbidden: project does not belong to caller organization")
+	}
+	return nil
 }

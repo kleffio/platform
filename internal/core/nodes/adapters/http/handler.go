@@ -1,7 +1,9 @@
 package http
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -64,6 +66,34 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nodeID := req.NodeID
+	if nodeID != "" {
+		existing, findErr := h.repo.FindByID(r.Context(), nodeID)
+		switch {
+		case findErr == nil:
+			if existing.Hostname != req.Hostname {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "node_id is already assigned to a different hostname"})
+				return
+			}
+		case errors.Is(findErr, sql.ErrNoRows):
+			// New explicit node ID registration; allowed by bootstrap secret.
+		case findErr != nil:
+			h.logger.Error("lookup node by id", "error", findErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to register node"})
+			return
+		}
+	} else {
+		existing, findErr := h.repo.FindByHostname(r.Context(), req.Hostname)
+		switch {
+		case findErr == nil:
+			nodeID = existing.ID
+		case errors.Is(findErr, sql.ErrNoRows):
+			nodeID = ids.New()
+		default:
+			h.logger.Error("lookup node by hostname", "error", findErr)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to register node"})
+			return
+		}
+	}
 	if nodeID == "" {
 		nodeID = ids.New()
 	}

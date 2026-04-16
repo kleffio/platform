@@ -159,7 +159,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
 		ProjectsHandler:      projectshttp.NewHandler(projectsStore, logger),
-		WorkloadsHandler:     workloadshttp.NewHandler(workloadsStore, provisionHandler, workloadAction, bus, logger),
+		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
 		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),
 		UsageHandler:         usagehttp.NewHandler(logger),
