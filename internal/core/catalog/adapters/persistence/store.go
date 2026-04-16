@@ -171,9 +171,9 @@ func (s *PostgresCatalogStore) UpsertBlueprint(ctx context.Context, b *domain.Bl
 	if err != nil {
 		return fmt.Errorf("upsert blueprint: marshal runtime_hints: %w", err)
 	}
-	imagesJSON, err := json.Marshal(b.Images)
+	imagesJSON, err := json.Marshal(b.Constructs)
 	if err != nil {
-		return fmt.Errorf("upsert blueprint: marshal images: %w", err)
+		return fmt.Errorf("upsert blueprint: marshal constructs: %w", err)
 	}
 
 	_, err = s.db.ExecContext(ctx, `
@@ -369,8 +369,8 @@ func scanBlueprint(s scanner) (*domain.Blueprint, error) {
 		return nil, fmt.Errorf("unmarshal blueprint runtime_hints: %w", err)
 	}
 	if len(imagesJSON) > 0 {
-		if err := json.Unmarshal(imagesJSON, &b.Images); err != nil {
-			return nil, fmt.Errorf("unmarshal blueprint images: %w", err)
+		if err := json.Unmarshal(imagesJSON, &b.Constructs); err != nil {
+			return nil, fmt.Errorf("unmarshal blueprint constructs: %w", err)
 		}
 	}
 

@@ -104,17 +104,27 @@ func (h *ProvisionWorkloadHandler) Handle(ctx context.Context, cmd ProvisionWork
 	if err != nil {
 		return nil, fmt.Errorf("blueprint not found: %w", err)
 	}
-	construct, err := h.catalog.GetConstruct(ctx, blueprint.ConstructID)
-	if err != nil {
-		return nil, fmt.Errorf("construct not found: %w", err)
-	}
 
 	now := time.Now().UTC()
 	deploymentID := ids.New()
+
+	// Resolve image: if the caller passed an IMAGE key in EnvOverrides (construct
+	// selector), use it to look up the image URL in blueprint.Constructs.
+	// Fall back to cmd.Image, then blueprint.Image.
 	image := cmd.Image
 	if image == "" {
-		image = construct.Image
+		if len(blueprint.Constructs) > 0 {
+			if label, ok := cmd.EnvOverrides["IMAGE"]; ok && label != "" {
+				if resolved, ok := blueprint.Constructs[label]; ok {
+					image = resolved
+				}
+			}
+		}
+		if image == "" {
+			image = blueprint.Image
+		}
 	}
+
 	memoryBytes := cmd.MemoryBytes
 	if memoryBytes <= 0 {
 		memoryBytes = int64(blueprint.Resources.MemoryMB) * 1024 * 1024
@@ -124,18 +134,24 @@ func (h *ProvisionWorkloadHandler) Handle(ctx context.Context, cmd ProvisionWork
 		cpuMillicores = int64(blueprint.Resources.CPUMillicores)
 	}
 
-	env := make(map[string]string, len(construct.Env)+len(cmd.EnvOverrides))
-	for k, v := range construct.Env {
+	env := make(map[string]string, len(blueprint.Env)+len(cmd.EnvOverrides))
+	for k, v := range blueprint.Env {
 		env[k] = v
 	}
 	for k, v := range cmd.EnvOverrides {
+		if k == "IMAGE" {
+			continue // not a container env var
+		}
 		if strings.TrimSpace(v) != "" {
 			env[k] = v
 		}
 	}
+	if blueprint.StartupScript != "" {
+		env["STARTUP_SCRIPT"] = blueprint.StartupScript
+	}
 
-	portRequirements := make([]ports.PortRequirement, 0, len(construct.Ports))
-	for _, p := range construct.Ports {
+	portRequirements := make([]ports.PortRequirement, 0, len(blueprint.Ports))
+	for _, p := range blueprint.Ports {
 		portRequirements = append(portRequirements, ports.PortRequirement{
 			TargetPort: p.Container,
 			Protocol:   p.Protocol,
@@ -183,11 +199,11 @@ func (h *ProvisionWorkloadHandler) Handle(ctx context.Context, cmd ProvisionWork
 		CPUMillicores:    cpuMillicores,
 		PortRequirements: portRequirements,
 		RuntimeHints: ports.RuntimeHints{
-			KubernetesStrategy: construct.RuntimeHints.KubernetesStrategy,
-			ExposeUDP:          construct.RuntimeHints.ExposeUDP,
-			PersistentStorage:  construct.RuntimeHints.PersistentStorage,
-			StoragePath:        construct.RuntimeHints.StoragePath,
-			StorageGB:          construct.RuntimeHints.StorageGB,
+			KubernetesStrategy: blueprint.RuntimeHints.KubernetesStrategy,
+			ExposeUDP:          blueprint.RuntimeHints.ExposeUDP,
+			PersistentStorage:  blueprint.RuntimeHints.PersistentStorage,
+			StoragePath:        blueprint.RuntimeHints.StoragePath,
+			StorageGB:          blueprint.RuntimeHints.StorageGB,
 		},
 	}
 

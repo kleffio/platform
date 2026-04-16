@@ -96,13 +96,13 @@ func (h *CreateDeploymentHandler) Handle(ctx context.Context, cmd CreateDeployme
 
 	// Resolve the container image. If the blueprint offers multiple images
 	// (e.g. different Java versions), the frontend sends the chosen label via
-	// cmd.Config["IMAGE"]. We look that label up in blueprint.Images and use
+	// cmd.Config["IMAGE"]. We look that label up in blueprint.Constructs and use
 	// the resolved URL, then strip "IMAGE" from the env so it isn't forwarded
 	// to the container. If no selection is made, fall back to blueprint.Image.
 	image := blueprint.Image
-	if len(blueprint.Images) > 0 {
+	if len(blueprint.Constructs) > 0 {
 		if label, ok := cmd.Config["IMAGE"]; ok && label != "" {
-			if resolved, ok := blueprint.Images[label]; ok {
+			if resolved, ok := blueprint.Constructs[label]; ok {
 				image = resolved
 			}
 		}

@@ -30,7 +30,7 @@ type Blueprint struct {
 	Version      string                        `json:"version"`
 	Official     bool                          `json:"official"`
 	Image        string                        `json:"image"`
-	Images       map[string]string             `json:"images,omitempty"`
+	Constructs   map[string]string             `json:"constructs,omitempty"`
 	Env          map[string]string             `json:"env"`
 	Ports        []Port                        `json:"ports"`
 	Outputs      []Output                      `json:"outputs"`

@@ -253,7 +253,7 @@ type wireBlueprint struct {
 	Version      string                            `json:"version"`
 	Official     bool                              `json:"official"`
 	Image        string                            `json:"image"`
-	Images       map[string]string                 `json:"images"`
+	Constructs   map[string]string                 `json:"constructs"`
 	Env          map[string]string                 `json:"env"`
 	Ports        []domain.Port                     `json:"ports"`
 	RuntimeHints wireRuntimeHintsOverride          `json:"runtime_hints"`
@@ -284,7 +284,7 @@ func (w wireBlueprint) toDomain(crateHints domain.RuntimeHints, startupScript st
 		Version:       w.Version,
 		Official:      w.Official,
 		Image:         w.Image,
-		Images:        w.Images,
+		Constructs:    w.Constructs,
 		Env:           w.Env,
 		Ports:         w.Ports,
 		Outputs:       w.Outputs,
