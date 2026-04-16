@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	// PostgreSQL driver — blank import registers the "pgx" driver with database/sql.
@@ -19,18 +20,26 @@ import (
 	cataloghttp "github.com/kleffio/platform/internal/core/catalog/adapters/http"
 	catalogpersistence "github.com/kleffio/platform/internal/core/catalog/adapters/persistence"
 	catalogregistry "github.com/kleffio/platform/internal/core/catalog/adapters/registry"
-	deploymentscommands "github.com/kleffio/platform/internal/core/deployments/application/commands"
 	deploymentshttp "github.com/kleffio/platform/internal/core/deployments/adapters/http"
 	deploymentspersistence "github.com/kleffio/platform/internal/core/deployments/adapters/persistence"
+	deploymentscommands "github.com/kleffio/platform/internal/core/deployments/application/commands"
 	nodeshttp "github.com/kleffio/platform/internal/core/nodes/adapters/http"
+	nodespersistence "github.com/kleffio/platform/internal/core/nodes/adapters/persistence"
+	nodesapp "github.com/kleffio/platform/internal/core/nodes/application"
 	organizationshttp "github.com/kleffio/platform/internal/core/organizations/adapters/http"
 	pluginhttp "github.com/kleffio/platform/internal/core/plugins/adapters/http"
 	pluginpersistence "github.com/kleffio/platform/internal/core/plugins/adapters/persistence"
 	pluginregistry "github.com/kleffio/platform/internal/core/plugins/adapters/registry"
 	pluginapplication "github.com/kleffio/platform/internal/core/plugins/application"
+	projectshttp "github.com/kleffio/platform/internal/core/projects/adapters/http"
+	projectspersistence "github.com/kleffio/platform/internal/core/projects/adapters/persistence"
 	usagehttp "github.com/kleffio/platform/internal/core/usage/adapters/http"
+	workloadshttp "github.com/kleffio/platform/internal/core/workloads/adapters/http"
+	workloadspersistence "github.com/kleffio/platform/internal/core/workloads/adapters/persistence"
+	workloadcmd "github.com/kleffio/platform/internal/core/workloads/application/commands"
+	"github.com/kleffio/platform/internal/shared/events"
 	"github.com/kleffio/platform/internal/shared/middleware"
-	"github.com/kleffio/platform/internal/shared/queue"
+	sharedqueue "github.com/kleffio/platform/internal/shared/queue"
 	"github.com/kleffio/platform/internal/shared/runtime"
 	runtimedocker "github.com/kleffio/platform/internal/shared/runtime/docker"
 	runtimek8s "github.com/kleffio/platform/internal/shared/runtime/kubernetes"
@@ -43,6 +52,8 @@ type Container struct {
 	Logger        *slog.Logger
 	DB            *sql.DB
 	TokenVerifier middleware.TokenVerifier
+	NodeVerifier  middleware.NodeTokenVerifier
+	EventBus      *events.Bus
 	// Plugin manager — owns all plugin lifecycle and gRPC connections.
 	PluginManager *pluginapplication.Manager
 
@@ -51,6 +62,8 @@ type Container struct {
 	SetupHandler         *pluginhttp.SetupHandler
 	CatalogHandler       *cataloghttp.Handler
 	OrganizationsHandler *organizationshttp.Handler
+	ProjectsHandler      *projectshttp.Handler
+	WorkloadsHandler     *workloadshttp.Handler
 	DeploymentsHandler   *deploymentshttp.Handler
 	NodesHandler         *nodeshttp.Handler
 	BillingHandler       *billinghttp.Handler
@@ -102,18 +115,42 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		logger.Info("crate registry synced")
 	}
 
-	// ── Deployments ───────────────────────────────────────────────────────────
-
 	deploymentStore := deploymentspersistence.NewPostgresDeploymentStore(db)
-	enqueuer := buildEnqueuer(cfg, logger)
+	enqueuer, err := buildEnqueuer(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build daemon queue enqueuer: %w", err)
+	}
+	if _, ok := enqueuer.(sharedqueue.NopEnqueuer); ok {
+		logger.Warn("daemon queue enqueuer not configured; deployments enqueue will fail")
+	}
 	createDeployment := deploymentscommands.NewCreateDeploymentHandler(deploymentStore, catalogStore, enqueuer)
 	serverAction := deploymentscommands.NewServerActionHandler(deploymentStore, catalogStore, enqueuer)
+
+	nodeStore := nodespersistence.NewPostgresNodeStore(db)
+	nodeVerifier := nodesapp.NewTokenVerifier(nodeStore)
+
+	projectsStore := projectspersistence.NewPostgresProjectStore(db)
+	workloadsStore := workloadspersistence.NewPostgresStore(db)
+
+	queuePublisher, err := buildQueuePublisher(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("build daemon queue publisher: %w", err)
+	}
+	if _, ok := queuePublisher.(sharedqueue.NopPublisher); ok {
+		logger.Warn("daemon queue publisher not configured; workload provision enqueue will fail")
+	}
+
+	bus := events.New()
+	provisionHandler := workloadcmd.NewProvisionWorkloadHandler(workloadsStore, projectsStore, queuePublisher, catalogStore, logger)
+	workloadAction := workloadcmd.NewWorkloadActionHandler(workloadsStore, projectsStore, queuePublisher, logger)
 
 	return &Container{
 		Config:        cfg,
 		Logger:        logger,
 		DB:            db,
 		TokenVerifier: middleware.NewPluginTokenVerifier(pluginMgr),
+		NodeVerifier:  nodeVerifier,
+		EventBus:      bus,
 		PluginManager: pluginMgr,
 
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
@@ -121,7 +158,9 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
 		OrganizationsHandler: organizationshttp.NewHandler(logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
-		NodesHandler:         nodeshttp.NewHandler(logger),
+		ProjectsHandler:      projectshttp.NewHandler(projectsStore, logger),
+		WorkloadsHandler:     workloadshttp.NewHandler(workloadsStore, provisionHandler, workloadAction, bus, logger),
+		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),
 		UsageHandler:         usagehttp.NewHandler(logger),
 		AuditHandler:         audithttp.NewHandler(logger),
@@ -130,30 +169,18 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	}, nil
 }
 
-// buildEnqueuer returns a Redis enqueuer if REDIS_URL is set, otherwise a no-op.
-func buildEnqueuer(cfg *Config, logger *slog.Logger) queue.Enqueuer {
-	if cfg.RedisURL == "" {
-		logger.Warn("REDIS_URL not set — daemon job enqueueing disabled")
-		return &noopEnqueuer{}
+func buildEnqueuer(cfg *Config) (sharedqueue.Enqueuer, error) {
+	if strings.TrimSpace(cfg.DaemonQueueURL) == "" {
+		return sharedqueue.NopEnqueuer{}, nil
 	}
-	enqueuer, err := queue.NewRedisEnqueuer(cfg.RedisURL)
-	if err != nil {
-		logger.Warn("failed to connect to Redis — daemon job enqueueing disabled", "error", err)
-		return &noopEnqueuer{}
-	}
-	logger.Info("daemon queue: Redis", "url", cfg.RedisURL)
-	return enqueuer
+	return sharedqueue.NewRedisEnqueuer(cfg.DaemonQueueURL, cfg.DaemonQueuePassword, cfg.DaemonQueueTLS)
 }
 
-// noopEnqueuer silently drops jobs — used when Redis is not configured.
-type noopEnqueuer struct{}
-
-func (n *noopEnqueuer) Enqueue(_ context.Context, _ string, _ queue.WorkloadSpec) error {
-	return nil
-}
-
-func (n *noopEnqueuer) EnqueueAction(_ context.Context, _ string, _ queue.JobType, _ queue.WorkloadSpec) error {
-	return nil
+func buildQueuePublisher(cfg *Config) (sharedqueue.Publisher, error) {
+	if strings.TrimSpace(cfg.DaemonQueueURL) == "" {
+		return sharedqueue.NopPublisher{}, nil
+	}
+	return sharedqueue.NewRedisPublisher(cfg.DaemonQueueURL, cfg.DaemonQueuePassword, cfg.DaemonQueueTLS)
 }
 
 // buildRuntimeAdapter constructs the appropriate RuntimeAdapter from config.
