@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/kleffio/platform/internal/shared/ids"
 )
 
 // JobType matches the daemon's JobType constants.
@@ -25,6 +27,10 @@ const (
 	JobStatusPending JobStatus = "pending"
 )
 
+const (
+	pendingListKey = "repo:queue:pending"
+)
+
 // Job mirrors the daemon's jobs.Job struct for JSON compatibility.
 // The daemon deserializes this directly, so field names must match exactly.
 type Job struct {
@@ -43,6 +49,8 @@ type WorkloadSpec struct {
 	OwnerID          string            `json:"owner_id"`
 	ServerID         string            `json:"server_id"`
 	BlueprintID      string            `json:"blueprint_id"`
+	ProjectID        string            `json:"project_id"`
+	ProjectSlug      string            `json:"project_slug"`
 	Image            string            `json:"image"`
 	BlueprintVersion string            `json:"blueprint_version,omitempty"`
 	EnvOverrides     map[string]string `json:"env_overrides,omitempty"`
@@ -67,17 +75,53 @@ type RuntimeHints struct {
 	StorageGB          int    `json:"storage_gb,omitempty"`
 }
 
+// Publisher pushes jobs into the daemon queue backend.
+type Publisher interface {
+	Enqueue(ctx context.Context, job *Job) error
+}
+
 // Enqueuer can push jobs onto the daemon's work queue.
 type Enqueuer interface {
 	Enqueue(ctx context.Context, jobID string, spec WorkloadSpec) error
 	EnqueueAction(ctx context.Context, jobID string, jobType JobType, spec WorkloadSpec) error
 }
 
-// newJob builds a Job ready to be serialized and pushed to Redis.
-func newJob(jobID string, jobType JobType, resourceID string, payload any) (*Job, error) {
+// NopPublisher is used when queue config is not set.
+type NopPublisher struct{}
+
+func (NopPublisher) Enqueue(_ context.Context, _ *Job) error {
+	return fmt.Errorf("daemon queue publisher is not configured")
+}
+
+// NopEnqueuer is used when queue config is not set.
+type NopEnqueuer struct{}
+
+func (NopEnqueuer) Enqueue(_ context.Context, _ string, _ WorkloadSpec) error {
+	return fmt.Errorf("daemon queue enqueuer is not configured")
+}
+
+func (NopEnqueuer) EnqueueAction(_ context.Context, _ string, _ JobType, _ WorkloadSpec) error {
+	return fmt.Errorf("daemon queue enqueuer is not configured")
+}
+
+func NewJob(jobType JobType, resourceID string, payload any, maxAttempts int) (*Job, error) {
+	return newJobWithID("", jobType, resourceID, payload, maxAttempts)
+}
+
+func PendingListKey() string {
+	return pendingListKey
+}
+
+func newJobWithID(jobID string, jobType JobType, resourceID string, payload any, maxAttempts int) (*Job, error) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
+		return nil, fmt.Errorf("marshal job payload: %w", err)
+	}
+	if maxAttempts <= 0 {
+		maxAttempts = 5
+	}
+	if jobID == "" {
+		jobID = ids.New()
 	}
 	return &Job{
 		JobID:       jobID,
@@ -86,7 +130,7 @@ func newJob(jobID string, jobType JobType, resourceID string, payload any) (*Job
 		Payload:     raw,
 		Status:      JobStatusPending,
 		Attempts:    0,
-		MaxAttempts: 3,
+		MaxAttempts: maxAttempts,
 		CreatedAt:   time.Now().UTC(),
 	}, nil
 }

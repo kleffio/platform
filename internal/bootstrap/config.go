@@ -75,6 +75,19 @@ type Config struct {
 	// PluginNamespace is the k8s namespace for plugin Deployments (default: "kleff").
 	PluginNamespace string
 
+	// NodeBootstrapSecret is the shared bootstrap secret daemons use to register
+	// and obtain a node token.
+	NodeBootstrapSecret string
+
+	// DaemonQueueURL is the Redis URL used to enqueue daemon jobs.
+	DaemonQueueURL string
+
+	// DaemonQueuePassword overrides any password in DaemonQueueURL.
+	DaemonQueuePassword string
+
+	// DaemonQueueTLS enables TLS for Redis queue connections.
+	DaemonQueueTLS bool
+
 	// SecretKey is the AES-256 key (any length; hashed with SHA-256) for
 	// encrypting plugin secrets at rest. Required in production.
 	SecretKey string
@@ -84,9 +97,8 @@ type Config struct {
 	// Manifest-declared env vars take precedence over these globals.
 	CompanionEnv map[string]string
 
-	// RedisURL is the connection URL for the daemon job queue.
-	// If empty, job enqueueing is disabled (daemon integration skipped).
-	// Example: redis://localhost:6379/0
+	// RedisURL is the legacy connection URL for the daemon job queue.
+	// Prefer DaemonQueueURL.
 	RedisURL string
 }
 
@@ -113,7 +125,16 @@ func LoadConfig() (*Config, error) {
 		PluginRegistryTTL: config.Int("PLUGIN_REGISTRY_TTL", 3600),
 		PluginNamespace:   config.String("PLUGIN_NAMESPACE", "kleff"),
 		SecretKey:         config.String("SECRET_KEY", ""),
-		RedisURL:          config.String("REDIS_URL", ""),
+
+		NodeBootstrapSecret: config.String("NODE_BOOTSTRAP_SECRET", config.String("KLEFF_SHARED_SECRET", "")),
+		DaemonQueueURL:      config.String("DAEMON_QUEUE_REDIS_URL", ""),
+		DaemonQueuePassword: config.String("DAEMON_QUEUE_REDIS_PASSWORD", ""),
+		DaemonQueueTLS:      config.Bool("DAEMON_QUEUE_REDIS_TLS", false),
+		RedisURL:            config.String("REDIS_URL", ""),
+	}
+
+	if cfg.DaemonQueueURL == "" {
+		cfg.DaemonQueueURL = cfg.RedisURL
 	}
 
 	if raw := config.String("CORS_ALLOWED_ORIGINS", ""); raw != "" {
