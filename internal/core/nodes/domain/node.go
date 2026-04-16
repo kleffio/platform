@@ -20,6 +20,7 @@ type Node struct {
 	Region    string
 	IPAddress string
 	Status    NodeStatus
+	TokenHash string `json:"-"`
 
 	// Capacity
 	TotalVCPU   int

@@ -40,6 +40,20 @@ func buildRouter(c *Container) http.Handler {
 	// Catalog (crates + blueprints) is public — no login needed to browse.
 	c.CatalogHandler.RegisterRoutes(r)
 
+	// Daemon node bootstrap route. Uses a shared bootstrap secret and returns a
+	// node token for subsequent machine-to-machine calls.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireNodeBootstrap(c.Config.NodeBootstrapSecret))
+		c.NodesHandler.RegisterPublicRoutes(r)
+	})
+
+	// Daemon internal callback routes. Require a per-node token issued during
+	// registration, not end-user JWT auth.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RequireNodeAuth(c.NodeVerifier))
+		c.WorkloadsHandler.RegisterInternalRoutes(r)
+	})
+
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireAuth(c.TokenVerifier))
@@ -48,6 +62,8 @@ func buildRouter(c *Container) http.Handler {
 		c.AuthHandler.RegisterRoutes(r)
 		c.PluginsHandler.RegisterPublicRoutes(r)
 		c.OrganizationsHandler.RegisterRoutes(r)
+		c.ProjectsHandler.RegisterRoutes(r)
+		c.WorkloadsHandler.RegisterRoutes(r)
 		c.DeploymentsHandler.RegisterRoutes(r)
 		c.NodesHandler.RegisterRoutes(r)
 		c.BillingHandler.RegisterRoutes(r)
