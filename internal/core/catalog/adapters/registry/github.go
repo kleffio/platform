@@ -57,57 +57,60 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 
 	var syncErrors []string
 
-	for _, ref := range index.Crates {
+	for _, entry := range index.allEntries() {
+		cat := entry.Category
+		ref := entry.Ref
+
 		// 2. Fetch and upsert crate metadata
-		crateData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/crate.json", ref.ID))
+		crateData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/crate.json", cat, ref.ID))
 		if err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s: %v", ref.ID, err))
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s: %v", cat, ref.ID, err))
 			continue
 		}
 
 		var wc wireCrate
 		if err := json.Unmarshal(crateData, &wc); err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s parse: %v", ref.ID, err))
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s parse: %v", cat, ref.ID, err))
 			continue
 		}
 
-		if err := store.UpsertCrate(ctx, wc.toDomain()); err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s upsert: %v", ref.ID, err))
+		if err := store.UpsertCrate(ctx, wc.toDomain(cat)); err != nil {
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s upsert: %v", cat, ref.ID, err))
 			continue
 		}
 
 		// 3. Fetch blueprint.json and construct.json from each version folder
 		for _, version := range ref.Versions {
-			bpData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/%s/blueprint.json", ref.ID, version))
+			bpData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/blueprint.json", cat, ref.ID, version))
 			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s: %v", ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s: %v", cat, ref.ID, version, err))
 				continue
 			}
 
 			var wb wireBlueprint
 			if err := json.Unmarshal(bpData, &wb); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s parse: %v", ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s parse: %v", cat, ref.ID, version, err))
 				continue
 			}
 
 			if err := store.UpsertBlueprint(ctx, wb.toDomain()); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s upsert: %v", ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s upsert: %v", cat, ref.ID, version, err))
 			}
 
-			cData, err := r.fetch(ctx, fmt.Sprintf("crates/%s/%s/construct.json", ref.ID, version))
+			cData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/construct.json", cat, ref.ID, version))
 			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s: %v", ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s: %v", cat, ref.ID, version, err))
 				continue
 			}
 
-			var wc wireConstruct
-			if err := json.Unmarshal(cData, &wc); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s parse: %v", ref.ID, version, err))
+			var wcon wireConstruct
+			if err := json.Unmarshal(cData, &wcon); err != nil {
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s parse: %v", cat, ref.ID, version, err))
 				continue
 			}
 
-			if err := store.UpsertConstruct(ctx, wc.toDomain()); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s upsert: %v", ref.ID, version, err))
+			if err := store.UpsertConstruct(ctx, wcon.toDomain()); err != nil {
+				syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s upsert: %v", cat, ref.ID, version, err))
 			}
 		}
 	}
@@ -158,7 +161,29 @@ func (r *CrateRegistry) fetch(ctx context.Context, path string) ([]byte, error) 
 
 // crateIndex is the top-level index.json structure.
 type crateIndex struct {
-	Crates []crateRef `json:"crates"`
+	Games     []crateRef `json:"games"`
+	Databases []crateRef `json:"databases"`
+	Cache     []crateRef `json:"cache"`
+	Storage   []crateRef `json:"storage"`
+	Web       []crateRef `json:"web"`
+	Apps      []crateRef `json:"apps"`
+}
+
+func (idx crateIndex) allEntries() []categoryEntry {
+	var out []categoryEntry
+	for _, ref := range idx.Games     { out = append(out, categoryEntry{"games", ref}) }
+	for _, ref := range idx.Databases { out = append(out, categoryEntry{"databases", ref}) }
+	for _, ref := range idx.Cache     { out = append(out, categoryEntry{"cache", ref}) }
+	for _, ref := range idx.Storage   { out = append(out, categoryEntry{"storage", ref}) }
+	for _, ref := range idx.Web       { out = append(out, categoryEntry{"web", ref}) }
+	for _, ref := range idx.Apps      { out = append(out, categoryEntry{"apps", ref}) }
+	return out
+}
+
+// categoryEntry pairs a category name with its crate reference from index.json.
+type categoryEntry struct {
+	Category string
+	Ref      crateRef
 }
 
 // crateRef is an entry in index.json listing a crate's version folder names.
@@ -168,21 +193,21 @@ type crateRef struct {
 }
 
 // wireCrate maps crate.json from the registry.
+// Category is no longer stored in crate.json — it is derived from the directory path.
 type wireCrate struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
-	Category    string   `json:"category"`
 	Description string   `json:"description"`
 	Logo        string   `json:"logo"`
 	Tags        []string `json:"tags"`
 	Official    bool     `json:"official"`
 }
 
-func (w wireCrate) toDomain() *domain.Crate {
+func (w wireCrate) toDomain(category string) *domain.Crate {
 	return &domain.Crate{
 		ID:          w.ID,
 		Name:        w.Name,
-		Category:    w.Category,
+		Category:    category,
 		Description: w.Description,
 		Logo:        w.Logo,
 		Tags:        w.Tags,
