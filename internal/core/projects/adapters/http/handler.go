@@ -69,11 +69,19 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(projects) == 0 {
 		now := time.Now().UTC()
+
+		slug := "default"
+		name := "Default"
+		// Resolve any slug conflict (rare but safe).
+		if _, err := h.repo.FindBySlug(r.Context(), orgID, slug); err == nil {
+			slug = fmt.Sprintf("%s-%s", slug, ids.New()[:6])
+		}
+
 		defaultProject := &domain.Project{
 			ID:             ids.New(),
 			OrganizationID: orgID,
-			Slug:           "default",
-			Name:           "Default",
+			Slug:           slug,
+			Name:           name,
 			IsDefault:      true,
 			CreatedAt:      now,
 			UpdatedAt:      now,

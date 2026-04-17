@@ -26,5 +26,5 @@ func (v *PluginTokenVerifier) Verify(ctx context.Context, rawToken string) (*Ver
 	if roles == nil {
 		roles = []string{}
 	}
-	return &VerifyResult{Subject: claims.Subject, Email: claims.Email, Roles: roles}, nil
+	return &VerifyResult{Subject: claims.Subject, Username: claims.Username, Email: claims.Email, Roles: roles}, nil
 }

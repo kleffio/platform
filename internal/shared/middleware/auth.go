@@ -13,16 +13,18 @@ const claimsKey contextKey = "jwt_claims"
 
 // Claims holds verified identity injected into the request context by RequireAuth.
 type Claims struct {
-	Subject string
-	Email   string
-	Roles   []string
+	Subject  string
+	Username string
+	Email    string
+	Roles    []string
 }
 
 // VerifyResult is returned by TokenVerifier.Verify on success.
 type VerifyResult struct {
-	Subject string
-	Email   string
-	Roles   []string
+	Subject  string
+	Username string
+	Email    string
+	Roles    []string
 }
 
 // TokenVerifier validates a raw bearer token and returns its claims.
@@ -54,9 +56,10 @@ func RequireAuth(verifier TokenVerifier) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := context.WithValue(r.Context(), claimsKey, &Claims{
-				Subject: result.Subject,
-				Email:   result.Email,
-				Roles:   result.Roles,
+				Subject:  result.Subject,
+				Username: result.Username,
+				Email:    result.Email,
+				Roles:    result.Roles,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

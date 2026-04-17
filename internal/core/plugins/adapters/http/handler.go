@@ -53,6 +53,7 @@ func NewHandler(
 // RegisterPublicRoutes attaches authenticated-but-not-admin plugin routes.
 func (h *Handler) RegisterPublicRoutes(r chi.Router) {
 	r.Get("/api/v1/plugins/catalog", h.handleMarketplaceCatalog)
+	r.Get("/api/v1/plugins/installed", h.handleListInstalledPublic)
 }
 
 // RegisterRoutes attaches all plugin routes to the provided router.
@@ -130,6 +131,45 @@ func (h *Handler) handleRefreshCatalog(w http.ResponseWriter, r *http.Request) {
 }
 
 // ── Installed plugins ─────────────────────────────────────────────────────────
+
+// handleListInstalledPublic serves installed plugins to any authenticated user.
+// Admins receive all installed plugins; non-admins receive only type=ui plugins.
+func (h *Handler) handleListInstalledPublic(w http.ResponseWriter, r *http.Request) {
+	plugins, err := h.manager.ListPlugins(r.Context())
+	if err != nil {
+		h.logger.Error("list installed plugins (public)", "error", err)
+		commonhttp.Error(w, domain.NewInternal(err))
+		return
+	}
+
+	claims, _ := middleware.ClaimsFromContext(r.Context())
+	isAdmin := false
+	for _, role := range claims.Roles {
+		if role == "admin" {
+			isAdmin = true
+			break
+		}
+	}
+
+	if !isAdmin {
+		filtered := plugins[:0]
+		for _, p := range plugins {
+			if p.Type == "ui" {
+				filtered = append(filtered, p)
+			}
+		}
+		plugins = filtered
+	}
+
+	activeID := h.manager.GetActiveIDPID()
+	responses := toResponses(plugins)
+	for i := range responses {
+		if responses[i].ID == activeID {
+			responses[i].IsActiveIDP = true
+		}
+	}
+	commonhttp.Success(w, map[string]any{"plugins": responses})
+}
 
 func (h *Handler) handleListInstalled(w http.ResponseWriter, r *http.Request) {
 	plugins, err := h.manager.ListPlugins(r.Context())

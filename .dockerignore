@@ -6,7 +6,6 @@
 bin/
 **/*.exe
 **/*.test
-**/vendor/
 
 # Environment files — never bake secrets into images
 **/.env

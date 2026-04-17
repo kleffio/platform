@@ -19,7 +19,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     GOWORK=off \
     go build \
-    -ldflags="-w -s" \
+-ldflags="-w -s" \
     -trimpath \
     -o /platform \
     ./cmd/api/
