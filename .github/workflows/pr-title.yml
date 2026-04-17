@@ -19,6 +19,8 @@ jobs:
           types: |
             feature
             feat
+            enhancement
+            enh
             bugfix
             fix
             chore

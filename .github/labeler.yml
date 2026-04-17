@@ -3,6 +3,9 @@ feature:
       - any-glob-to-any-file: ["**/*.go", "internal/**", "cmd/**"]
   - head-branch: ["^feature/", "^feat/"]
 
+enhancement:
+  - head-branch: ["^enhancement/", "^enh/"]
+
 bugfix:
   - head-branch: ["^bugfix/", "^fix/"]
 

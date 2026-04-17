@@ -1,5 +1,6 @@
 [
-  { "name": "feature",  "color": "1f883d", "description": "New feature or enhancement" },
+  { "name": "feature",      "color": "1f883d", "description": "New feature" },
+  { "name": "enhancement",  "color": "a2eeef", "description": "Enhancement to existing feature" },
   { "name": "bugfix",   "color": "d73a4a", "description": "Bug fix" },
   { "name": "chore",    "color": "8f5bff", "description": "Maintenance/devex" },
   { "name": "docs",     "color": "0e8a16", "description": "Documentation" },
