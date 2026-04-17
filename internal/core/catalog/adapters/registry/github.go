@@ -296,36 +296,6 @@ func (w wireBlueprint) toDomain(crateHints domain.RuntimeHints, startupScript st
 	}
 }
 
-// toConstruct derives a domain.Construct from the merged blueprint.json,
-// applying blueprint-level runtime_hints overrides on top of crate defaults.
-func (w wireBlueprint) toConstruct(crateHints domain.RuntimeHints) *domain.Construct {
-	var conExts map[string]domain.ConstructExtension
-	if len(w.Extensions) > 0 {
-		conExts = make(map[string]domain.ConstructExtension, len(w.Extensions))
-		for k, v := range w.Extensions {
-			conExts[k] = domain.ConstructExtension{
-				InstallMethod:   v.InstallMethod,
-				InstallPath:     v.InstallPath,
-				FileExtension:   v.FileExtension,
-				ConfigPath:      v.ConfigPath,
-				RequiresRestart: v.RequiresRestart,
-			}
-		}
-	}
-	return &domain.Construct{
-		ID:           w.ID,
-		CrateID:      w.Crate,
-		BlueprintID:  w.ID,
-		Image:        w.Image,
-		Version:      w.Version,
-		Env:          w.Env,
-		Ports:        w.Ports,
-		RuntimeHints: mergeRuntimeHints(crateHints, w.RuntimeHints),
-		Extensions:   conExts,
-		Outputs:      w.Outputs,
-	}
-}
-
 // mergeRuntimeHints applies blueprint-level overrides onto crate-level defaults.
 // Only fields explicitly present in the blueprint's runtime_hints JSON are overridden.
 func mergeRuntimeHints(base domain.RuntimeHints, override wireRuntimeHintsOverride) domain.RuntimeHints {
