@@ -27,6 +27,7 @@ import (
 	nodespersistence "github.com/kleffio/platform/internal/core/nodes/adapters/persistence"
 	nodesapp "github.com/kleffio/platform/internal/core/nodes/application"
 	organizationshttp "github.com/kleffio/platform/internal/core/organizations/adapters/http"
+	organizationspersistence "github.com/kleffio/platform/internal/core/organizations/adapters/persistence"
 	pluginhttp "github.com/kleffio/platform/internal/core/plugins/adapters/http"
 	pluginpersistence "github.com/kleffio/platform/internal/core/plugins/adapters/persistence"
 	pluginregistry "github.com/kleffio/platform/internal/core/plugins/adapters/registry"
@@ -129,6 +130,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	nodeStore := nodespersistence.NewPostgresNodeStore(db)
 	nodeVerifier := nodesapp.NewTokenVerifier(nodeStore)
 
+	orgStore := organizationspersistence.NewPostgresOrgStore(db)
 	projectsStore := projectspersistence.NewPostgresProjectStore(db)
 	workloadsStore := workloadspersistence.NewPostgresStore(db)
 
@@ -156,10 +158,10 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
 		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
-		OrganizationsHandler: organizationshttp.NewHandler(logger),
+		OrganizationsHandler: organizationshttp.NewHandler(orgStore, logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
-		ProjectsHandler:      projectshttp.NewHandler(projectsStore, logger),
-		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
+		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, logger),
+		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, orgStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
 		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),
 		UsageHandler:         usagehttp.NewHandler(logger),

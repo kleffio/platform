@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	orgports "github.com/kleffio/platform/internal/core/organizations/ports"
 	"github.com/kleffio/platform/internal/core/projects/domain"
 	"github.com/kleffio/platform/internal/core/projects/ports"
 	"github.com/kleffio/platform/internal/shared/ids"
@@ -24,11 +25,12 @@ var slugCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
 type Handler struct {
 	repo   ports.ProjectRepository
+	orgs   orgports.OrganizationRepository
 	logger *slog.Logger
 }
 
-func NewHandler(repo ports.ProjectRepository, logger *slog.Logger) *Handler {
-	return &Handler{repo: repo, logger: logger}
+func NewHandler(repo ports.ProjectRepository, orgs orgports.OrganizationRepository, logger *slog.Logger) *Handler {
+	return &Handler{repo: repo, orgs: orgs, logger: logger}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -50,14 +52,9 @@ func (h *Handler) RegisterRoutes(r chi.Router) {
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
-	orgID, err := organizationIDFromRequest(r)
+	orgID, err := h.resolveOrganizationID(r)
 	if err != nil {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-		return
-	}
-	if err := h.repo.EnsureOrganization(r.Context(), orgID, "Organization "+orgID); err != nil {
-		h.logger.Error("ensure organization", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to ensure organization"})
 		return
 	}
 
@@ -111,18 +108,13 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
 		return
 	}
-	orgID, err := organizationIDFromRequest(r)
+	orgID, err := h.resolveOrganizationID(r)
 	if err != nil {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 		return
 	}
 	if req.OrganizationID != "" && req.OrganizationID != orgID {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: organization mismatch"})
-		return
-	}
-	if err := h.repo.EnsureOrganization(r.Context(), orgID, "Organization "+orgID); err != nil {
-		h.logger.Error("ensure organization", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to ensure organization"})
 		return
 	}
 
@@ -351,32 +343,58 @@ func (h *Handler) upsertGraphNode(w http.ResponseWriter, r *http.Request) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func organizationIDFromRequest(r *http.Request) (string, error) {
+// resolveOrganizationID determines the caller's active organization.
+//
+// If X-Organization-ID / organization_id is present:
+//   - verify the caller is a member of that org (membership table)
+//
+// Otherwise fall back to the caller's personal org (derived from JWT sub),
+// bootstrapping the org row + owner membership on first use.
+func (h *Handler) resolveOrganizationID(r *http.Request) (string, error) {
 	queryOrgID := strings.TrimSpace(r.URL.Query().Get("organization_id"))
 	headerOrgID := strings.TrimSpace(r.Header.Get("X-Organization-ID"))
 
 	if queryOrgID != "" && headerOrgID != "" && queryOrgID != headerOrgID {
 		return "", fmt.Errorf("forbidden: conflicting organization context")
 	}
-
 	requestedOrgID := queryOrgID
 	if requestedOrgID == "" {
 		requestedOrgID = headerOrgID
 	}
 
-	if claims, ok := middleware.ClaimsFromContext(r.Context()); ok {
-		if claims.Subject != "" {
-			callerOrgID := "org-" + normalizeSlug(claims.Subject)
-			if requestedOrgID != "" && requestedOrgID != callerOrgID {
-				return "", fmt.Errorf("forbidden: organization mismatch")
-			}
-			return callerOrgID, nil
-		}
-	}
+	claims, hasClaims := middleware.ClaimsFromContext(r.Context())
 
+	// Explicit org in request — verify membership.
 	if requestedOrgID != "" {
+		if hasClaims && claims.Subject != "" && h.orgs != nil {
+			if _, err := h.orgs.GetMember(r.Context(), requestedOrgID, claims.Subject); err != nil {
+				return "", fmt.Errorf("forbidden: not a member of this organization")
+			}
+		}
 		return requestedOrgID, nil
 	}
+
+	// No explicit org — use personal org derived from JWT sub.
+	if hasClaims && claims.Subject != "" {
+		personalOrgID := "org-" + normalizeSlug(claims.Subject)
+		if h.orgs != nil {
+			orgName := "My Organization"
+			if claims.Username != "" {
+				orgName = claims.Username + "'s Organization"
+			}
+			if err := h.orgs.EnsureOrgWithOwner(r.Context(), personalOrgID, orgName,
+				claims.Subject, claims.Email, claims.Username); err != nil {
+				return "", fmt.Errorf("failed to bootstrap organization")
+			}
+		} else {
+			// Fallback when org repo not available (tests/legacy).
+			if err := h.repo.EnsureOrganization(r.Context(), personalOrgID, "Organization "+personalOrgID); err != nil {
+				return "", fmt.Errorf("failed to ensure organization")
+			}
+		}
+		return personalOrgID, nil
+	}
+
 	return "org-default", nil
 }
 
@@ -386,7 +404,7 @@ func (h *Handler) authorizedProject(r *http.Request, projectID string) (*domain.
 		return nil, err
 	}
 
-	orgID, err := organizationIDFromRequest(r)
+	orgID, err := h.resolveOrganizationID(r)
 	if err != nil {
 		return nil, err
 	}
