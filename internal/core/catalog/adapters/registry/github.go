@@ -61,23 +61,24 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 
 	for _, entry := range index.allEntries() {
 		cat := entry.Category
+		pathPrefix := entry.PathPrefix
 		ref := entry.Ref
 
 		// 2. Fetch and upsert crate metadata
-		crateData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/crate.json", cat, ref.ID))
+		crateData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/crate.json", pathPrefix, ref.ID))
 		if err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s: %v", cat, ref.ID, err))
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s: %v", pathPrefix, ref.ID, err))
 			continue
 		}
 
 		var wc wireCrate
 		if err := json.Unmarshal(crateData, &wc); err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s parse: %v", cat, ref.ID, err))
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s parse: %v", pathPrefix, ref.ID, err))
 			continue
 		}
 
 		if err := store.UpsertCrate(ctx, wc.toDomain(cat)); err != nil {
-			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s upsert: %v", cat, ref.ID, err))
+			syncErrors = append(syncErrors, fmt.Sprintf("crate %s/%s upsert: %v", pathPrefix, ref.ID, err))
 			continue
 		}
 
@@ -86,26 +87,37 @@ func (r *CrateRegistry) Sync(ctx context.Context, store ports.CatalogRepository)
 		// fields (image, env, ports, outputs, runtime_hints overrides).
 		// A Construct is derived from it using crate-level runtime_hints as defaults.
 		for _, version := range ref.Versions {
-			bpData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/blueprint.json", cat, ref.ID, version))
+			bpData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/blueprint.json", pathPrefix, ref.ID, version))
 			if err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s: %v", cat, ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s: %v", pathPrefix, ref.ID, version, err))
 				continue
 			}
 
 			var wb wireBlueprint
 			if err := json.Unmarshal(bpData, &wb); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s parse: %v", cat, ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s parse: %v", pathPrefix, ref.ID, version, err))
 				continue
+			}
+
+			// Backward compatibility: older registry entries keep deployment runtime
+			// fields in construct.json. Merge them when blueprint.json omits them.
+			if constructData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/construct.json", pathPrefix, ref.ID, version)); err == nil {
+				var wc wireConstruct
+				if err := json.Unmarshal(constructData, &wc); err != nil {
+					syncErrors = append(syncErrors, fmt.Sprintf("construct %s/%s/%s parse: %v", pathPrefix, ref.ID, version, err))
+				} else {
+					wb.applyConstructFallback(wc)
+				}
 			}
 
 			// Optionally fetch entrypoint.sh — not all variants need a startup script.
 			var startupScript string
-			if scriptData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/entrypoint.sh", cat, ref.ID, version)); err == nil {
+			if scriptData, err := r.fetch(ctx, fmt.Sprintf("%s/%s/%s/entrypoint.sh", pathPrefix, ref.ID, version)); err == nil {
 				startupScript = string(scriptData)
 			}
 
 			if err := store.UpsertBlueprint(ctx, wb.toDomain(wc.RuntimeHints, startupScript)); err != nil {
-				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s upsert: %v", cat, ref.ID, version, err))
+				syncErrors = append(syncErrors, fmt.Sprintf("blueprint %s/%s/%s upsert: %v", pathPrefix, ref.ID, version, err))
 			}
 		}
 	}
@@ -162,23 +174,26 @@ type crateIndex struct {
 	Storage   []crateRef `json:"storage"`
 	Web       []crateRef `json:"web"`
 	Apps      []crateRef `json:"apps"`
+	Crates    []crateRef `json:"crates"`
 }
 
 func (idx crateIndex) allEntries() []categoryEntry {
 	var out []categoryEntry
-	for _, ref := range idx.Games     { out = append(out, categoryEntry{"games", ref}) }
-	for _, ref := range idx.Databases { out = append(out, categoryEntry{"databases", ref}) }
-	for _, ref := range idx.Cache     { out = append(out, categoryEntry{"cache", ref}) }
-	for _, ref := range idx.Storage   { out = append(out, categoryEntry{"storage", ref}) }
-	for _, ref := range idx.Web       { out = append(out, categoryEntry{"web", ref}) }
-	for _, ref := range idx.Apps      { out = append(out, categoryEntry{"apps", ref}) }
+	for _, ref := range idx.Games     { out = append(out, categoryEntry{"games", "games", ref}) }
+	for _, ref := range idx.Databases { out = append(out, categoryEntry{"databases", "databases", ref}) }
+	for _, ref := range idx.Cache     { out = append(out, categoryEntry{"cache", "cache", ref}) }
+	for _, ref := range idx.Storage   { out = append(out, categoryEntry{"storage", "storage", ref}) }
+	for _, ref := range idx.Web       { out = append(out, categoryEntry{"web", "web", ref}) }
+	for _, ref := range idx.Apps      { out = append(out, categoryEntry{"apps", "apps", ref}) }
+	for _, ref := range idx.Crates    { out = append(out, categoryEntry{"", "crates", ref}) }
 	return out
 }
 
 // categoryEntry pairs a category name with its crate reference from index.json.
 type categoryEntry struct {
-	Category string
-	Ref      crateRef
+	Category   string
+	PathPrefix string
+	Ref        crateRef
 }
 
 // crateRef is an entry in index.json listing a crate's version folder names.
@@ -193,6 +208,7 @@ type crateRef struct {
 type wireCrate struct {
 	ID           string             `json:"id"`
 	Name         string             `json:"name"`
+	Category     string             `json:"category"`
 	Description  string             `json:"description"`
 	Logo         string             `json:"logo"`
 	Tags         []string           `json:"tags"`
@@ -201,10 +217,18 @@ type wireCrate struct {
 }
 
 func (w wireCrate) toDomain(category string) *domain.Crate {
+	resolvedCategory := strings.TrimSpace(category)
+	if resolvedCategory == "" {
+		resolvedCategory = strings.TrimSpace(w.Category)
+	}
+	if resolvedCategory == "" {
+		resolvedCategory = "games"
+	}
+
 	return &domain.Crate{
 		ID:          w.ID,
 		Name:        w.Name,
-		Category:    category,
+		Category:    resolvedCategory,
 		Description: w.Description,
 		Logo:        w.Logo,
 		Tags:        w.Tags,
@@ -261,6 +285,65 @@ type wireBlueprint struct {
 	Config       []domain.ConfigField              `json:"config"`
 	Resources    domain.Resources                  `json:"resources"`
 	Extensions   map[string]wireBlueprintExtension `json:"extensions"`
+}
+
+type wireConstruct struct {
+	ID           string            `json:"id"`
+	Crate        string            `json:"crate"`
+	Blueprint    string            `json:"blueprint"`
+	Image        string            `json:"image"`
+	Version      string            `json:"version"`
+	Env          map[string]string `json:"env"`
+	Ports        []domain.Port     `json:"ports"`
+	RuntimeHints domain.RuntimeHints `json:"runtime_hints"`
+	Outputs      []domain.Output   `json:"outputs"`
+}
+
+func (w *wireBlueprint) applyConstructFallback(construct wireConstruct) {
+	if w.Image == "" {
+		w.Image = construct.Image
+	}
+
+	if len(w.Env) == 0 && len(construct.Env) > 0 {
+		w.Env = construct.Env
+	}
+
+	if len(w.Ports) == 0 && len(construct.Ports) > 0 {
+		w.Ports = construct.Ports
+	}
+
+	if len(w.Outputs) == 0 && len(construct.Outputs) > 0 {
+		w.Outputs = construct.Outputs
+	}
+
+	if w.RuntimeHints.KubernetesStrategy == nil {
+		v := construct.RuntimeHints.KubernetesStrategy
+		w.RuntimeHints.KubernetesStrategy = &v
+	}
+	if w.RuntimeHints.ExposeUDP == nil {
+		v := construct.RuntimeHints.ExposeUDP
+		w.RuntimeHints.ExposeUDP = &v
+	}
+	if w.RuntimeHints.PersistentStorage == nil {
+		v := construct.RuntimeHints.PersistentStorage
+		w.RuntimeHints.PersistentStorage = &v
+	}
+	if w.RuntimeHints.StoragePath == nil {
+		v := construct.RuntimeHints.StoragePath
+		w.RuntimeHints.StoragePath = &v
+	}
+	if w.RuntimeHints.StorageGB == nil {
+		v := construct.RuntimeHints.StorageGB
+		w.RuntimeHints.StorageGB = &v
+	}
+	if w.RuntimeHints.HealthCheckPath == nil {
+		v := construct.RuntimeHints.HealthCheckPath
+		w.RuntimeHints.HealthCheckPath = &v
+	}
+	if w.RuntimeHints.HealthCheckPort == nil {
+		v := construct.RuntimeHints.HealthCheckPort
+		w.RuntimeHints.HealthCheckPort = &v
+	}
 }
 
 func (w wireBlueprint) toDomain(crateHints domain.RuntimeHints, startupScript string) *domain.Blueprint {
