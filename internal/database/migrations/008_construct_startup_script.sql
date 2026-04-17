@@ -1,0 +1,2 @@
+ALTER TABLE constructs
+  ADD COLUMN IF NOT EXISTS startup_script TEXT NOT NULL DEFAULT '';

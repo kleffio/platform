@@ -55,14 +55,8 @@ func (h *ServerActionHandler) Handle(ctx context.Context, cmd ServerActionComman
 	if err != nil {
 		return fmt.Errorf("blueprint not found: %w", err)
 	}
-	constructs, err := h.catalog.ListConstructs(ctx, "", blueprint.ConstructID)
-	if err != nil || len(constructs) == 0 {
-		return fmt.Errorf("construct not found for blueprint")
-	}
-	construct := constructs[0]
-
-	portReqs := make([]queue.PortRequirement, 0, len(construct.Ports))
-	for _, p := range construct.Ports {
+	portReqs := make([]queue.PortRequirement, 0, len(blueprint.Ports))
+	for _, p := range blueprint.Ports {
 		portReqs = append(portReqs, queue.PortRequirement{
 			TargetPort: p.Container,
 			Protocol:   p.Protocol,
@@ -73,16 +67,16 @@ func (h *ServerActionHandler) Handle(ctx context.Context, cmd ServerActionComman
 		OwnerID:          deployment.OrganizationID,
 		ServerID:         deployment.ServerName,
 		BlueprintID:      blueprint.ID,
-		Image:            construct.Image,
+		Image:            blueprint.Image,
 		MemoryBytes:      int64(blueprint.Resources.MemoryMB) * 1024 * 1024,
 		CPUMillicores:    int64(blueprint.Resources.CPUMillicores),
 		PortRequirements: portReqs,
 		RuntimeHints: queue.RuntimeHints{
-			KubernetesStrategy: construct.RuntimeHints.KubernetesStrategy,
-			ExposeUDP:          construct.RuntimeHints.ExposeUDP,
-			PersistentStorage:  construct.RuntimeHints.PersistentStorage,
-			StoragePath:        construct.RuntimeHints.StoragePath,
-			StorageGB:          construct.RuntimeHints.StorageGB,
+			KubernetesStrategy: blueprint.RuntimeHints.KubernetesStrategy,
+			ExposeUDP:          blueprint.RuntimeHints.ExposeUDP,
+			PersistentStorage:  blueprint.RuntimeHints.PersistentStorage,
+			StoragePath:        blueprint.RuntimeHints.StoragePath,
+			StorageGB:          blueprint.RuntimeHints.StorageGB,
 		},
 	}
 

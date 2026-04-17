@@ -17,23 +17,30 @@ type Crate struct {
 	UpdatedAt   time.Time    `json:"updated_at"`
 }
 
-// Blueprint is the user-facing definition of a runnable service.
-// It contains what the user configures: version, players, memory, etc.
-// It does NOT contain Docker images, ports, or runtime details — those live in Construct.
+// Blueprint is the complete definition of a runnable service.
+// It contains both what the user configures (version, players, memory, etc.)
+// and the deployment details (image, env, ports, runtime hints, startup script).
 type Blueprint struct {
-	ID          string                        `json:"id"`
-	CrateID     string                        `json:"crate_id"`
-	ConstructID string                        `json:"construct_id"`
-	Name        string                        `json:"name"`
-	Description string                        `json:"description"`
-	Logo        string                        `json:"logo"`
-	Version     string                        `json:"version"`
-	Official    bool                          `json:"official"`
-	Config      []ConfigField                 `json:"config"`
-	Resources   Resources                     `json:"resources"`
-	Extensions  map[string]BlueprintExtension `json:"extensions"`
-	CreatedAt   time.Time                     `json:"created_at"`
-	UpdatedAt   time.Time                     `json:"updated_at"`
+	ID           string                        `json:"id"`
+	CrateID      string                        `json:"crate_id"`
+	ConstructID  string                        `json:"construct_id"`
+	Name         string                        `json:"name"`
+	Description  string                        `json:"description"`
+	Logo         string                        `json:"logo"`
+	Version      string                        `json:"version"`
+	Official     bool                          `json:"official"`
+	Image        string                        `json:"image"`
+	Constructs   map[string]string             `json:"constructs,omitempty"`
+	Env          map[string]string             `json:"env"`
+	Ports        []Port                        `json:"ports"`
+	Outputs      []Output                      `json:"outputs"`
+	RuntimeHints RuntimeHints                  `json:"runtime_hints"`
+	StartupScript string                       `json:"startup_script,omitempty"`
+	Config       []ConfigField                 `json:"config"`
+	Resources    Resources                     `json:"resources"`
+	Extensions   map[string]BlueprintExtension `json:"extensions"`
+	CreatedAt    time.Time                     `json:"created_at"`
+	UpdatedAt    time.Time                     `json:"updated_at"`
 }
 
 // BlueprintExtension declares that this blueprint supports an extension type
@@ -47,18 +54,19 @@ type BlueprintExtension struct {
 // It contains the Docker image, fixed env vars, ports, runtime hints, and
 // extension install details. It is never shown directly to the user.
 type Construct struct {
-	ID           string                         `json:"id"`
-	CrateID      string                         `json:"crate_id"`
-	BlueprintID  string                         `json:"blueprint_id"`
-	Image        string                         `json:"image"`
-	Version      string                         `json:"version"`
-	Env          map[string]string              `json:"env"`
-	Ports        []Port                         `json:"ports"`
-	RuntimeHints RuntimeHints                   `json:"runtime_hints"`
-	Extensions   map[string]ConstructExtension  `json:"extensions"`
-	Outputs      []Output                       `json:"outputs"`
-	CreatedAt    time.Time                      `json:"created_at"`
-	UpdatedAt    time.Time                      `json:"updated_at"`
+	ID            string                         `json:"id"`
+	CrateID       string                         `json:"crate_id"`
+	BlueprintID   string                         `json:"blueprint_id"`
+	Image         string                         `json:"image"`
+	Version       string                         `json:"version"`
+	Env           map[string]string              `json:"env"`
+	Ports         []Port                         `json:"ports"`
+	RuntimeHints  RuntimeHints                   `json:"runtime_hints"`
+	Extensions    map[string]ConstructExtension  `json:"extensions"`
+	Outputs       []Output                       `json:"outputs"`
+	StartupScript string                         `json:"startup_script,omitempty"`
+	CreatedAt     time.Time                      `json:"created_at"`
+	UpdatedAt     time.Time                      `json:"updated_at"`
 }
 
 // ConstructExtension holds the technical details for installing an extension

@@ -73,12 +73,6 @@ func (h *CreateDeploymentHandler) Handle(ctx context.Context, cmd CreateDeployme
 	if err != nil {
 		return nil, fmt.Errorf("blueprint not found: %w", err)
 	}
-	constructs, err := h.catalog.ListConstructs(ctx, "", blueprint.ConstructID)
-	if err != nil || len(constructs) == 0 {
-		return nil, fmt.Errorf("construct not found for blueprint %s", cmd.BlueprintID)
-	}
-	construct := constructs[0]
-
 	deploymentID := ids.New()
 	now := time.Now().UTC()
 
@@ -100,20 +94,39 @@ func (h *CreateDeploymentHandler) Handle(ctx context.Context, cmd CreateDeployme
 		return nil, fmt.Errorf("save deployment: %w", err)
 	}
 
-	// Build env: construct base env + user config overrides.
-	env := make(map[string]string, len(construct.Env)+len(cmd.Config))
-	for k, v := range construct.Env {
+	// Resolve the container image. If the blueprint offers multiple images
+	// (e.g. different Java versions), the frontend sends the chosen label via
+	// cmd.Config["IMAGE"]. We look that label up in blueprint.Constructs and use
+	// the resolved URL, then strip "IMAGE" from the env so it isn't forwarded
+	// to the container. If no selection is made, fall back to blueprint.Image.
+	image := blueprint.Image
+	if len(blueprint.Constructs) > 0 {
+		if label, ok := cmd.Config["IMAGE"]; ok && label != "" {
+			if resolved, ok := blueprint.Constructs[label]; ok {
+				image = resolved
+			}
+		}
+	}
+
+	// Build env: blueprint base env + user config overrides.
+	env := make(map[string]string, len(blueprint.Env)+len(cmd.Config))
+	for k, v := range blueprint.Env {
 		env[k] = v
 	}
 	for k, v := range cmd.Config {
+		if k == "IMAGE" {
+			continue // not a container env var
+		}
 		if v != "" {
 			env[k] = v
 		}
 	}
+	if blueprint.StartupScript != "" {
+		env["STARTUP_SCRIPT"] = blueprint.StartupScript
+	}
 
-	// Build port requirements from construct.
-	portReqs := make([]queue.PortRequirement, 0, len(construct.Ports))
-	for _, p := range construct.Ports {
+	portReqs := make([]queue.PortRequirement, 0, len(blueprint.Ports))
+	for _, p := range blueprint.Ports {
 		portReqs = append(portReqs, queue.PortRequirement{
 			TargetPort: p.Container,
 			Protocol:   p.Protocol,
@@ -135,17 +148,17 @@ func (h *CreateDeploymentHandler) Handle(ctx context.Context, cmd CreateDeployme
 		OwnerID:          cmd.OrganizationID,
 		ServerID:         cmd.ServerName,
 		BlueprintID:      cmd.BlueprintID,
-		Image:            construct.Image,
+		Image:            image,
 		EnvOverrides:     env,
 		MemoryBytes:      int64(memoryMB) * 1024 * 1024,
 		CPUMillicores:    int64(cpuMillicores),
 		PortRequirements: portReqs,
 		RuntimeHints: queue.RuntimeHints{
-			KubernetesStrategy: construct.RuntimeHints.KubernetesStrategy,
-			ExposeUDP:          construct.RuntimeHints.ExposeUDP,
-			PersistentStorage:  construct.RuntimeHints.PersistentStorage,
-			StoragePath:        construct.RuntimeHints.StoragePath,
-			StorageGB:          construct.RuntimeHints.StorageGB,
+			KubernetesStrategy: blueprint.RuntimeHints.KubernetesStrategy,
+			ExposeUDP:          blueprint.RuntimeHints.ExposeUDP,
+			PersistentStorage:  blueprint.RuntimeHints.PersistentStorage,
+			StoragePath:        blueprint.RuntimeHints.StoragePath,
+			StorageGB:          blueprint.RuntimeHints.StorageGB,
 		},
 	}
 
