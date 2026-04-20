@@ -23,6 +23,9 @@ import (
 	deploymentshttp "github.com/kleffio/platform/internal/core/deployments/adapters/http"
 	deploymentspersistence "github.com/kleffio/platform/internal/core/deployments/adapters/persistence"
 	deploymentscommands "github.com/kleffio/platform/internal/core/deployments/application/commands"
+	notificationshttp "github.com/kleffio/platform/internal/core/notifications/adapters/http"
+	notificationspersistence "github.com/kleffio/platform/internal/core/notifications/adapters/persistence"
+	notificationsapp "github.com/kleffio/platform/internal/core/notifications/application"
 	nodeshttp "github.com/kleffio/platform/internal/core/nodes/adapters/http"
 	nodespersistence "github.com/kleffio/platform/internal/core/nodes/adapters/persistence"
 	nodesapp "github.com/kleffio/platform/internal/core/nodes/application"
@@ -59,19 +62,22 @@ type Container struct {
 	PluginManager *pluginapplication.Manager
 
 	// HTTP handler groups per domain module
-	AuthHandler          *pluginhttp.AuthHandler
-	SetupHandler         *pluginhttp.SetupHandler
-	CatalogHandler       *cataloghttp.Handler
-	OrganizationsHandler *organizationshttp.Handler
-	ProjectsHandler      *projectshttp.Handler
-	WorkloadsHandler     *workloadshttp.Handler
-	DeploymentsHandler   *deploymentshttp.Handler
-	NodesHandler         *nodeshttp.Handler
-	BillingHandler       *billinghttp.Handler
-	UsageHandler         *usagehttp.Handler
-	AuditHandler         *audithttp.Handler
-	AdminHandler         *adminhttp.Handler
-	PluginsHandler       *pluginhttp.Handler
+	AuthHandler           *pluginhttp.AuthHandler
+	SetupHandler          *pluginhttp.SetupHandler
+	CatalogHandler        *cataloghttp.Handler
+	OrganizationsHandler  *organizationshttp.Handler
+	ProjectsHandler       *projectshttp.Handler
+	WorkloadsHandler      *workloadshttp.Handler
+	DeploymentsHandler    *deploymentshttp.Handler
+	NodesHandler          *nodeshttp.Handler
+	BillingHandler        *billinghttp.Handler
+	UsageHandler          *usagehttp.Handler
+	AuditHandler          *audithttp.Handler
+	AdminHandler          *adminhttp.Handler
+	PluginsHandler        *pluginhttp.Handler
+	NotificationsHandler  *notificationshttp.Handler
+	NotificationService   *notificationsapp.Service
+	NotificationHub       *notificationsapp.Hub
 }
 
 // NewContainer wires all dependencies and returns the composition root.
@@ -143,6 +149,11 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 	}
 
 	bus := events.New()
+
+	notificationStore := notificationspersistence.NewPostgresNotificationStore(db)
+	notificationHub := notificationsapp.NewHub()
+	notificationSvc := notificationsapp.NewService(notificationStore, notificationHub, logger)
+
 	provisionHandler := workloadcmd.NewProvisionWorkloadHandler(workloadsStore, projectsStore, queuePublisher, catalogStore, logger)
 	workloadAction := workloadcmd.NewWorkloadActionHandler(workloadsStore, projectsStore, queuePublisher, logger)
 
@@ -158,7 +169,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
 		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
-		OrganizationsHandler: organizationshttp.NewHandler(orgStore, logger),
+		OrganizationsHandler: organizationshttp.NewHandler(orgStore, notificationSvc, logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
 		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, logger),
 		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, orgStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
@@ -168,6 +179,9 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		AuditHandler:         audithttp.NewHandler(logger),
 		AdminHandler:         adminhttp.NewHandler(logger),
 		PluginsHandler:       pluginhttp.NewHandler(pluginMgr, catalogRegistry, logger),
+		NotificationsHandler: notificationshttp.NewHandler(notificationSvc, notificationHub, logger),
+		NotificationService:  notificationSvc,
+		NotificationHub:      notificationHub,
 	}, nil
 }
 
