@@ -26,11 +26,13 @@ func (s *PostgresStore) CreateWorkload(ctx context.Context, workload *domain.Wor
 		INSERT INTO workloads (
 			id, name, organization_id, project_id, owner_id, blueprint_id,
 			image, runtime_ref, endpoint, node_id, state, error_message,
+			cpu_millicores, memory_bytes,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11, $12,
-			$13, $14
+			$13, $14,
+			$15, $16
 		)`,
 		workload.ID,
 		workload.Name,
@@ -44,6 +46,8 @@ func (s *PostgresStore) CreateWorkload(ctx context.Context, workload *domain.Wor
 		nullIfEmpty(workload.NodeID),
 		workload.State,
 		workload.ErrorMessage,
+		workload.CPUMillicores,
+		workload.MemoryBytes,
 		workload.CreatedAt,
 		workload.UpdatedAt,
 	)
@@ -57,7 +61,7 @@ func (s *PostgresStore) FindByProjectAndName(ctx context.Context, projectID, nam
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, name, organization_id, project_id, owner_id, blueprint_id,
 		       image, runtime_ref, endpoint, COALESCE(node_id, ''), state,
-		       error_message, created_at, updated_at
+		       error_message, cpu_millicores, memory_bytes, created_at, updated_at
 		FROM workloads
 		WHERE project_id = $1 AND name = $2
 		ORDER BY updated_at DESC
@@ -69,7 +73,7 @@ func (s *PostgresStore) FindByID(ctx context.Context, workloadID string) (*domai
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, name, organization_id, project_id, owner_id, blueprint_id,
 		       image, runtime_ref, endpoint, COALESCE(node_id, ''), state,
-		       error_message, created_at, updated_at
+		       error_message, cpu_millicores, memory_bytes, created_at, updated_at
 		FROM workloads WHERE id = $1`, workloadID)
 	return scanWorkload(row)
 }
@@ -78,7 +82,7 @@ func (s *PostgresStore) ListByProject(ctx context.Context, projectID string) ([]
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, name, organization_id, project_id, owner_id, blueprint_id,
 		       image, runtime_ref, endpoint, COALESCE(node_id, ''), state,
-		       error_message, created_at, updated_at
+		       error_message, cpu_millicores, memory_bytes, created_at, updated_at
 		FROM workloads
 		WHERE project_id = $1
 		ORDER BY created_at DESC`, projectID)
@@ -262,6 +266,8 @@ func scanWorkload(s scanner) (*domain.Workload, error) {
 		&w.NodeID,
 		&w.State,
 		&w.ErrorMessage,
+		&w.CPUMillicores,
+		&w.MemoryBytes,
 		&w.CreatedAt,
 		&w.UpdatedAt,
 	); err != nil {

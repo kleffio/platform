@@ -52,6 +52,7 @@ func buildRouter(c *Container) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.RequireNodeAuth(c.NodeVerifier))
 		c.WorkloadsHandler.RegisterInternalRoutes(r)
+		c.LogsHandler.RegisterInternalRoutes(r)
 	})
 
 	// Authenticated routes
@@ -68,6 +69,7 @@ func buildRouter(c *Container) http.Handler {
 		c.NodesHandler.RegisterRoutes(r)
 		c.BillingHandler.RegisterRoutes(r)
 		c.UsageHandler.RegisterRoutes(r)
+		c.LogsHandler.RegisterRoutes(r)
 		c.AuditHandler.RegisterRoutes(r)
 		c.NotificationsHandler.RegisterRoutes(r)
 

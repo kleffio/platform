@@ -172,12 +172,18 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 	workloadID := chi.URLParam(r, "id")
 	var req struct {
-		Status       string `json:"status"`
-		RuntimeRef   string `json:"runtime_ref"`
-		Endpoint     string `json:"endpoint"`
-		NodeID       string `json:"node_id"`
-		ErrorMessage string `json:"error_message"`
-		ObservedAt   string `json:"observed_at"`
+		Status        string  `json:"status"`
+		RuntimeRef    string  `json:"runtime_ref"`
+		Endpoint      string  `json:"endpoint"`
+		NodeID        string  `json:"node_id"`
+		ErrorMessage  string  `json:"error_message"`
+		ObservedAt    string  `json:"observed_at"`
+		CPUMillicores int64   `json:"cpu_millicores"`
+		MemoryMB      int64   `json:"memory_mb"`
+		NetworkRxMB   float64 `json:"network_rx_mb"`
+		NetworkTxMB   float64 `json:"network_tx_mb"`
+		DiskReadMB    float64 `json:"disk_read_mb"`
+		DiskWriteMB   float64 `json:"disk_write_mb"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -220,13 +226,19 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	update := domain.DaemonStatusUpdate{
-		WorkloadID:   workloadID,
-		Status:       status,
-		RuntimeRef:   req.RuntimeRef,
-		Endpoint:     req.Endpoint,
-		NodeID:       nodeID,
-		ErrorMessage: req.ErrorMessage,
-		ObservedAt:   observedAt,
+		WorkloadID:    workloadID,
+		Status:        status,
+		RuntimeRef:    req.RuntimeRef,
+		Endpoint:      req.Endpoint,
+		NodeID:        nodeID,
+		ErrorMessage:  req.ErrorMessage,
+		ObservedAt:    observedAt,
+		CPUMillicores: req.CPUMillicores,
+		MemoryMB:      req.MemoryMB,
+		NetworkRxMB:   req.NetworkRxMB,
+		NetworkTxMB:   req.NetworkTxMB,
+		DiskReadMB:    req.DiskReadMB,
+		DiskWriteMB:   req.DiskWriteMB,
 	}
 	if err := h.repo.UpdateFromDaemon(r.Context(), update); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
