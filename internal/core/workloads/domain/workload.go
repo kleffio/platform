@@ -25,18 +25,26 @@ type Workload struct {
 	NodeID         string        `json:"node_id"`
 	State          WorkloadState `json:"state"`
 	ErrorMessage   string        `json:"error_message"`
+	CPUMillicores  int64         `json:"cpu_millicores"`
+	MemoryBytes    int64         `json:"memory_bytes"`
 	CreatedAt      time.Time     `json:"created_at"`
 	UpdatedAt      time.Time     `json:"updated_at"`
 }
 
 type DaemonStatusUpdate struct {
-	WorkloadID   string
-	Status       WorkloadState
-	RuntimeRef   string
-	Endpoint     string
-	NodeID       string
-	ErrorMessage string
-	ObservedAt   time.Time
+	WorkloadID    string
+	Status        WorkloadState
+	RuntimeRef    string
+	Endpoint      string
+	NodeID        string
+	ErrorMessage  string
+	ObservedAt    time.Time
+	CPUMillicores int64
+	MemoryMB      int64
+	NetworkRxMB   float64
+	NetworkTxMB   float64
+	DiskReadMB    float64
+	DiskWriteMB   float64
 }
 
 // WorkloadStatusChanged is emitted after daemon callbacks are persisted.

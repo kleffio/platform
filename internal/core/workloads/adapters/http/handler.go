@@ -14,6 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	projectports "github.com/kleffio/platform/internal/core/projects/ports"
+	"github.com/kleffio/platform/internal/shared/ids"
+	usagedomain "github.com/kleffio/platform/internal/core/usage/domain"
+	usageports "github.com/kleffio/platform/internal/core/usage/ports"
 	"github.com/kleffio/platform/internal/core/workloads/application/commands"
 	"github.com/kleffio/platform/internal/core/workloads/domain"
 	"github.com/kleffio/platform/internal/core/workloads/ports"
@@ -29,18 +32,24 @@ const (
 )
 
 type Handler struct {
-	projects  projectports.ProjectRepository
-	repo      ports.Repository
-	provision *commands.ProvisionWorkloadHandler
-	action    *commands.WorkloadActionHandler
-	bus       *events.Bus
-	logger    *slog.Logger
+	projects   projectports.ProjectRepository
+	repo       ports.Repository
+	usageRepo  usageports.UsageRepository
+	provision  *commands.ProvisionWorkloadHandler
+	action     *commands.WorkloadActionHandler
+	bus        *events.Bus
+	logger     *slog.Logger
 }
 
 var orgSlugCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
 func NewHandler(projects projectports.ProjectRepository, repo ports.Repository, provision *commands.ProvisionWorkloadHandler, action *commands.WorkloadActionHandler, bus *events.Bus, logger *slog.Logger) *Handler {
 	return &Handler{projects: projects, repo: repo, provision: provision, action: action, bus: bus, logger: logger}
+}
+
+func (h *Handler) WithUsageRepository(ur usageports.UsageRepository) *Handler {
+	h.usageRepo = ur
+	return h
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -170,12 +179,18 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 	workloadID := chi.URLParam(r, "id")
 	var req struct {
-		Status       string `json:"status"`
-		RuntimeRef   string `json:"runtime_ref"`
-		Endpoint     string `json:"endpoint"`
-		NodeID       string `json:"node_id"`
-		ErrorMessage string `json:"error_message"`
-		ObservedAt   string `json:"observed_at"`
+		Status        string  `json:"status"`
+		RuntimeRef    string  `json:"runtime_ref"`
+		Endpoint      string  `json:"endpoint"`
+		NodeID        string  `json:"node_id"`
+		ErrorMessage  string  `json:"error_message"`
+		ObservedAt    string  `json:"observed_at"`
+		CPUMillicores int64   `json:"cpu_millicores"`
+		MemoryMB      int64   `json:"memory_mb"`
+		NetworkRxMB   float64 `json:"network_rx_mb"`
+		NetworkTxMB   float64 `json:"network_tx_mb"`
+		DiskReadMB    float64 `json:"disk_read_mb"`
+		DiskWriteMB   float64 `json:"disk_write_mb"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json body"})
@@ -218,13 +233,19 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	update := domain.DaemonStatusUpdate{
-		WorkloadID:   workloadID,
-		Status:       status,
-		RuntimeRef:   req.RuntimeRef,
-		Endpoint:     req.Endpoint,
-		NodeID:       nodeID,
-		ErrorMessage: req.ErrorMessage,
-		ObservedAt:   observedAt,
+		WorkloadID:    workloadID,
+		Status:        status,
+		RuntimeRef:    req.RuntimeRef,
+		Endpoint:      req.Endpoint,
+		NodeID:        nodeID,
+		ErrorMessage:  req.ErrorMessage,
+		ObservedAt:    observedAt,
+		CPUMillicores: req.CPUMillicores,
+		MemoryMB:      req.MemoryMB,
+		NetworkRxMB:   req.NetworkRxMB,
+		NetworkTxMB:   req.NetworkTxMB,
+		DiskReadMB:    req.DiskReadMB,
+		DiskWriteMB:   req.DiskWriteMB,
 	}
 	if err := h.repo.UpdateFromDaemon(r.Context(), update); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -234,6 +255,34 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("update workload status", "error", err, "workload_id", workloadID)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to persist workload status"})
 		return
+	}
+
+	if h.usageRepo != nil && (req.CPUMillicores > 0 || req.MemoryMB > 0) {
+		const scrapeIntervalSeconds = 30.0
+		usageRecord := &usagedomain.UsageRecord{
+			ID:             ids.New(),
+			OrganizationID: existing.OrganizationID,
+			ProjectID:      existing.ProjectID,
+			GameServerID:   workloadID,
+			NodeID:         nodeID,
+			RecordedAt:     observedAt,
+			CPUSeconds:     float64(req.CPUMillicores) / 1000.0 * scrapeIntervalSeconds,
+			MemoryGBHours:  float64(req.MemoryMB) / 1024.0 * (scrapeIntervalSeconds / 3600.0),
+			NetworkInMB:    req.NetworkRxMB,
+			NetworkOutMB:   req.NetworkTxMB,
+			DiskReadMB:     req.DiskReadMB,
+			DiskWriteMB:    req.DiskWriteMB,
+			// Display units
+			CPUMillicores:  req.CPUMillicores,
+			MemoryMB:       req.MemoryMB,
+			NetworkInKbps:  req.NetworkRxMB * 1024.0 / scrapeIntervalSeconds,
+			NetworkOutKbps: req.NetworkTxMB * 1024.0 / scrapeIntervalSeconds,
+			DiskReadKbps:   req.DiskReadMB * 1024.0 / scrapeIntervalSeconds,
+			DiskWriteKbps:  req.DiskWriteMB * 1024.0 / scrapeIntervalSeconds,
+		}
+		if err := h.usageRepo.Save(r.Context(), usageRecord); err != nil {
+			h.logger.Warn("save usage record", "error", err, "workload_id", workloadID)
+		}
 	}
 
 	if h.bus != nil {
