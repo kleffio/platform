@@ -13,10 +13,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	orgports "github.com/kleffio/platform/internal/core/organizations/ports"
 	projectports "github.com/kleffio/platform/internal/core/projects/ports"
-	"github.com/kleffio/platform/internal/shared/ids"
-	usagedomain "github.com/kleffio/platform/internal/core/usage/domain"
-	usageports "github.com/kleffio/platform/internal/core/usage/ports"
 	"github.com/kleffio/platform/internal/core/workloads/application/commands"
 	"github.com/kleffio/platform/internal/core/workloads/domain"
 	"github.com/kleffio/platform/internal/core/workloads/ports"
@@ -32,24 +30,19 @@ const (
 )
 
 type Handler struct {
-	projects   projectports.ProjectRepository
-	repo       ports.Repository
-	usageRepo  usageports.UsageRepository
-	provision  *commands.ProvisionWorkloadHandler
-	action     *commands.WorkloadActionHandler
-	bus        *events.Bus
-	logger     *slog.Logger
+	projects  projectports.ProjectRepository
+	orgs      orgports.OrganizationRepository
+	repo      ports.Repository
+	provision *commands.ProvisionWorkloadHandler
+	action    *commands.WorkloadActionHandler
+	bus       *events.Bus
+	logger    *slog.Logger
 }
 
 var orgSlugCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
-func NewHandler(projects projectports.ProjectRepository, repo ports.Repository, provision *commands.ProvisionWorkloadHandler, action *commands.WorkloadActionHandler, bus *events.Bus, logger *slog.Logger) *Handler {
-	return &Handler{projects: projects, repo: repo, provision: provision, action: action, bus: bus, logger: logger}
-}
-
-func (h *Handler) WithUsageRepository(ur usageports.UsageRepository) *Handler {
-	h.usageRepo = ur
-	return h
+func NewHandler(projects projectports.ProjectRepository, orgs orgports.OrganizationRepository, repo ports.Repository, provision *commands.ProvisionWorkloadHandler, action *commands.WorkloadActionHandler, bus *events.Bus, logger *slog.Logger) *Handler {
+	return &Handler{projects: projects, orgs: orgs, repo: repo, provision: provision, action: action, bus: bus, logger: logger}
 }
 
 func (h *Handler) RegisterRoutes(r chi.Router) {
@@ -68,7 +61,7 @@ func (h *Handler) RegisterInternalRoutes(r chi.Router) {
 
 func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
-	orgID := callerOrganizationID(r.Context())
+	orgID := h.callerOrganizationID(r)
 	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
@@ -143,7 +136,7 @@ func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
-	orgID := callerOrganizationID(r.Context())
+	orgID := h.callerOrganizationID(r)
 	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
@@ -168,7 +161,7 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "workload not found"})
 		return
 	}
-	orgID := callerOrganizationID(r.Context())
+	orgID := h.callerOrganizationID(r)
 	if orgID != "" && workload.OrganizationID != orgID {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: workload does not belong to caller organization"})
 		return
@@ -257,34 +250,6 @@ func (h *Handler) updateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if h.usageRepo != nil && (req.CPUMillicores > 0 || req.MemoryMB > 0) {
-		const scrapeIntervalSeconds = 30.0
-		usageRecord := &usagedomain.UsageRecord{
-			ID:             ids.New(),
-			OrganizationID: existing.OrganizationID,
-			ProjectID:      existing.ProjectID,
-			GameServerID:   workloadID,
-			NodeID:         nodeID,
-			RecordedAt:     observedAt,
-			CPUSeconds:     float64(req.CPUMillicores) / 1000.0 * scrapeIntervalSeconds,
-			MemoryGBHours:  float64(req.MemoryMB) / 1024.0 * (scrapeIntervalSeconds / 3600.0),
-			NetworkInMB:    req.NetworkRxMB,
-			NetworkOutMB:   req.NetworkTxMB,
-			DiskReadMB:     req.DiskReadMB,
-			DiskWriteMB:    req.DiskWriteMB,
-			// Display units
-			CPUMillicores:  req.CPUMillicores,
-			MemoryMB:       req.MemoryMB,
-			NetworkInKbps:  req.NetworkRxMB * 1024.0 / scrapeIntervalSeconds,
-			NetworkOutKbps: req.NetworkTxMB * 1024.0 / scrapeIntervalSeconds,
-			DiskReadKbps:   req.DiskReadMB * 1024.0 / scrapeIntervalSeconds,
-			DiskWriteKbps:  req.DiskWriteMB * 1024.0 / scrapeIntervalSeconds,
-		}
-		if err := h.usageRepo.Save(r.Context(), usageRecord); err != nil {
-			h.logger.Warn("save usage record", "error", err, "workload_id", workloadID)
-		}
-	}
-
 	if h.bus != nil {
 		_ = h.bus.Publish(r.Context(), domain.WorkloadStatusChanged{
 			WorkloadID: workloadID,
@@ -316,7 +281,7 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) runAction(w http.ResponseWriter, r *http.Request, action queue.JobType) {
 	projectID := chi.URLParam(r, "projectID")
 	workloadID := chi.URLParam(r, "id")
-	orgID := callerOrganizationID(r.Context())
+	orgID := h.callerOrganizationID(r)
 	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
@@ -358,11 +323,30 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func callerOrganizationID(ctx context.Context) string {
-	claims, ok := middleware.ClaimsFromContext(ctx)
-	if !ok || claims.Subject == "" {
-		return ""
+// callerOrganizationID resolves the active org from X-Organization-ID header,
+// verifying membership. Falls back to the personal org derived from JWT sub.
+func (h *Handler) callerOrganizationID(r *http.Request) string {
+	headerOrgID := strings.TrimSpace(r.Header.Get("X-Organization-ID"))
+	if headerOrgID == "" {
+		headerOrgID = strings.TrimSpace(r.URL.Query().Get("organization_id"))
 	}
+
+	claims, ok := middleware.ClaimsFromContext(r.Context())
+	if !ok || claims.Subject == "" {
+		return headerOrgID
+	}
+
+	if headerOrgID != "" {
+		// Verify membership when an explicit org is requested.
+		if h.orgs != nil {
+			if _, err := h.orgs.GetMember(r.Context(), headerOrgID, claims.Subject); err != nil {
+				return "" // not a member — access denied at ensureProjectAccess
+			}
+		}
+		return headerOrgID
+	}
+
+	// Personal org fallback.
 	return "org-" + normalizeOrgSlug(claims.Subject)
 }
 

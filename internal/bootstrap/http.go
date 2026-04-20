@@ -71,6 +71,7 @@ func buildRouter(c *Container) http.Handler {
 		c.UsageHandler.RegisterRoutes(r)
 		c.LogsHandler.RegisterRoutes(r)
 		c.AuditHandler.RegisterRoutes(r)
+		c.NotificationsHandler.RegisterRoutes(r)
 
 		// Admin routes — additionally require the "admin" role.
 		r.Group(func(r chi.Router) {
