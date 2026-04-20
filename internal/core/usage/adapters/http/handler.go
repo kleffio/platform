@@ -1,34 +1,55 @@
 package http
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	usagedomain "github.com/kleffio/platform/internal/core/usage/domain"
+	usageports "github.com/kleffio/platform/internal/core/usage/ports"
 )
 
 const basePath = "/api/v1/usage"
 
-// Handler groups all HTTP endpoints for the usage module.
 type Handler struct {
+	repo   usageports.UsageRepository
 	logger *slog.Logger
 }
 
-func NewHandler(logger *slog.Logger) *Handler {
-	return &Handler{logger: logger}
+func NewHandler(repo usageports.UsageRepository, logger *slog.Logger) *Handler {
+	return &Handler{repo: repo, logger: logger}
 }
 
-// RegisterRoutes attaches all usage routes to the provided router.
 func (h *Handler) RegisterRoutes(r chi.Router) {
-	r.Get(basePath+"/summary", h.getSummary)
-	r.Get(basePath+"/records", h.listRecords)
+	r.Get(basePath+"/metrics", h.getMetrics)
 }
 
-func notImplemented(w http.ResponseWriter) {
+// getMetrics returns the latest per-workload metrics snapshot for a project.
+// Query param: project_id (required)
+func (h *Handler) getMetrics(w http.ResponseWriter, r *http.Request) {
+	projectID := r.URL.Query().Get("project_id")
+	if projectID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "project_id is required"})
+		return
+	}
+
+	metrics, err := h.repo.ListLatestByProject(r.Context(), projectID)
+	if err != nil {
+		h.logger.Error("list metrics by project", "error", err, "project_id", projectID)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to fetch metrics"})
+		return
+	}
+
+	if metrics == nil {
+		metrics = []*usagedomain.WorkloadMetrics{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"workloads": metrics})
+}
+
+func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusNotImplemented)
-	_, _ = w.Write([]byte(`{"error":"not implemented"}`))
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(body)
 }
-
-func (h *Handler) getSummary(w http.ResponseWriter, _ *http.Request)   { notImplemented(w) }
-func (h *Handler) listRecords(w http.ResponseWriter, _ *http.Request)  { notImplemented(w) }

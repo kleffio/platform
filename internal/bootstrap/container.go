@@ -37,7 +37,10 @@ import (
 	pluginapplication "github.com/kleffio/platform/internal/core/plugins/application"
 	projectshttp "github.com/kleffio/platform/internal/core/projects/adapters/http"
 	projectspersistence "github.com/kleffio/platform/internal/core/projects/adapters/persistence"
+	logshttp "github.com/kleffio/platform/internal/core/logs/adapters/http"
+	logspersistence "github.com/kleffio/platform/internal/core/logs/adapters/persistence"
 	usagehttp "github.com/kleffio/platform/internal/core/usage/adapters/http"
+	usagepersistence "github.com/kleffio/platform/internal/core/usage/adapters/persistence"
 	workloadshttp "github.com/kleffio/platform/internal/core/workloads/adapters/http"
 	workloadspersistence "github.com/kleffio/platform/internal/core/workloads/adapters/persistence"
 	workloadcmd "github.com/kleffio/platform/internal/core/workloads/application/commands"
@@ -62,22 +65,23 @@ type Container struct {
 	PluginManager *pluginapplication.Manager
 
 	// HTTP handler groups per domain module
-	AuthHandler           *pluginhttp.AuthHandler
-	SetupHandler          *pluginhttp.SetupHandler
-	CatalogHandler        *cataloghttp.Handler
-	OrganizationsHandler  *organizationshttp.Handler
-	ProjectsHandler       *projectshttp.Handler
-	WorkloadsHandler      *workloadshttp.Handler
-	DeploymentsHandler    *deploymentshttp.Handler
-	NodesHandler          *nodeshttp.Handler
-	BillingHandler        *billinghttp.Handler
-	UsageHandler          *usagehttp.Handler
-	AuditHandler          *audithttp.Handler
-	AdminHandler          *adminhttp.Handler
-	PluginsHandler        *pluginhttp.Handler
-	NotificationsHandler  *notificationshttp.Handler
-	NotificationService   *notificationsapp.Service
-	NotificationHub       *notificationsapp.Hub
+	AuthHandler          *pluginhttp.AuthHandler
+	SetupHandler         *pluginhttp.SetupHandler
+	CatalogHandler       *cataloghttp.Handler
+	OrganizationsHandler *organizationshttp.Handler
+	ProjectsHandler      *projectshttp.Handler
+	WorkloadsHandler     *workloadshttp.Handler
+	DeploymentsHandler   *deploymentshttp.Handler
+	NodesHandler         *nodeshttp.Handler
+	BillingHandler       *billinghttp.Handler
+	UsageHandler         *usagehttp.Handler
+	LogsHandler          *logshttp.Handler
+	AuditHandler         *audithttp.Handler
+	AdminHandler         *adminhttp.Handler
+	PluginsHandler       *pluginhttp.Handler
+	NotificationsHandler *notificationshttp.Handler
+	NotificationService  *notificationsapp.Service
+	NotificationHub      *notificationsapp.Hub
 }
 
 // NewContainer wires all dependencies and returns the composition root.
@@ -175,7 +179,8 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, orgStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
 		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),
-		UsageHandler:         usagehttp.NewHandler(logger),
+		UsageHandler:         usagehttp.NewHandler(usagepersistence.NewPostgresUsageStore(db), logger),
+		LogsHandler:          logshttp.NewHandler(logspersistence.NewPostgresLogStore(db), logger),
 		AuditHandler:         audithttp.NewHandler(logger),
 		AdminHandler:         adminhttp.NewHandler(logger),
 		PluginsHandler:       pluginhttp.NewHandler(pluginMgr, catalogRegistry, logger),

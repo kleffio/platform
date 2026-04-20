@@ -167,6 +167,8 @@ func (h *ProvisionWorkloadHandler) Handle(ctx context.Context, cmd ProvisionWork
 		BlueprintID:    cmd.BlueprintID,
 		Image:          image,
 		State:          domain.WorkloadPending,
+		CPUMillicores:  cpuMillicores,
+		MemoryBytes:    memoryBytes,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}
