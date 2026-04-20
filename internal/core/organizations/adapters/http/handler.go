@@ -12,6 +12,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+<<<<<<< HEAD
+=======
+	"github.com/kleffio/platform/internal/core/notifications/application"
+	notificationsdomain "github.com/kleffio/platform/internal/core/notifications/domain"
+>>>>>>> 3dfd032d9615a84ab165078151f46e398eba8f83
 	"github.com/kleffio/platform/internal/core/organizations/adapters/persistence"
 	"github.com/kleffio/platform/internal/core/organizations/domain"
 	"github.com/kleffio/platform/internal/core/organizations/ports"
@@ -23,12 +28,22 @@ const basePath = "/api/v1/organizations"
 
 // Handler groups all HTTP endpoints for the organizations module.
 type Handler struct {
+<<<<<<< HEAD
 	repo   ports.OrganizationRepository
 	logger *slog.Logger
 }
 
 func NewHandler(repo ports.OrganizationRepository, logger *slog.Logger) *Handler {
 	return &Handler{repo: repo, logger: logger}
+=======
+	repo          ports.OrganizationRepository
+	notifications *application.Service
+	logger        *slog.Logger
+}
+
+func NewHandler(repo ports.OrganizationRepository, notifications *application.Service, logger *slog.Logger) *Handler {
+	return &Handler{repo: repo, notifications: notifications, logger: logger}
+>>>>>>> 3dfd032d9615a84ab165078151f46e398eba8f83
 }
 
 // RegisterRoutes attaches all organizations routes to the provided router.
@@ -420,6 +435,20 @@ func (h *Handler) createInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+<<<<<<< HEAD
+=======
+	// Notify the inviting admin that the invite was dispatched.
+	if h.notifications != nil {
+		_, _ = h.notifications.Create(r.Context(), application.CreateInput{
+			UserID: claims.Subject,
+			Type:   notificationsdomain.TypeOrgInvitation,
+			Title:  "Invitation sent",
+			Body:   fmt.Sprintf("An invitation was sent to %s to join the organization.", inv.InvitedEmail),
+			Data:   map[string]any{"org_id": id, "invite_id": inv.ID, "invited_email": inv.InvitedEmail},
+		})
+	}
+
+>>>>>>> 3dfd032d9615a84ab165078151f46e398eba8f83
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":            inv.ID,
 		"org_id":        inv.OrgID,
@@ -515,6 +544,25 @@ func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+<<<<<<< HEAD
+=======
+	// Notify the new member that they joined the organization.
+	if h.notifications != nil {
+		org, orgErr := h.repo.FindByID(r.Context(), inv.OrgID)
+		orgName := inv.OrgID
+		if orgErr == nil {
+			orgName = org.Name
+		}
+		_, _ = h.notifications.Create(r.Context(), application.CreateInput{
+			UserID: claims.Subject,
+			Type:   notificationsdomain.TypeOrgInvitation,
+			Title:  "You joined an organization",
+			Body:   fmt.Sprintf("You have successfully joined %s.", orgName),
+			Data:   map[string]any{"org_id": inv.OrgID},
+		})
+	}
+
+>>>>>>> 3dfd032d9615a84ab165078151f46e398eba8f83
 	writeJSON(w, http.StatusOK, map[string]string{"org_id": inv.OrgID})
 }
 
