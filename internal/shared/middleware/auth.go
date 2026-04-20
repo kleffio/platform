@@ -92,9 +92,13 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 }
 
 func extractBearer(r *http.Request) string {
-	v := r.Header.Get("Authorization")
-	if after, ok := strings.CutPrefix(v, "Bearer "); ok {
-		return after
+	// Standard Authorization header (used by all regular API calls).
+	if v := r.Header.Get("Authorization"); v != "" {
+		if after, ok := strings.CutPrefix(v, "Bearer "); ok {
+			return after
+		}
 	}
-	return ""
+	// Fallback: ?token= query parameter for EventSource / SSE connections,
+	// which cannot set custom headers in the browser.
+	return r.URL.Query().Get("token")
 }

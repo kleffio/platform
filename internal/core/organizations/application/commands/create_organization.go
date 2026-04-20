@@ -53,6 +53,16 @@ func (h *CreateOrganizationHandler) Handle(ctx context.Context, cmd CreateOrgani
 		return nil, fmt.Errorf("save organization: %w", err)
 	}
 
+	// The caller becomes the first owner.
+	if cmd.CreatedBy != "" {
+		_ = h.orgs.AddMember(ctx, &domain.Member{
+			OrgID:     org.ID,
+			UserID:    cmd.CreatedBy,
+			Role:      domain.RoleOwner,
+			CreatedAt: now,
+		})
+	}
+
 	return &CreateOrganizationResult{OrganizationID: org.ID, Slug: org.Slug}, nil
 }
 
