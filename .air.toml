@@ -10,6 +10,8 @@ tmp_dir = "/tmp/air"
   delay = 500
   kill_delay = "1s"
   rerun = false
+  poll = true
+  poll_interval = 1000
 
 [log]
   time = false

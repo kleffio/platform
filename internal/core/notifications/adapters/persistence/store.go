@@ -61,6 +61,18 @@ func (s *PostgresNotificationStore) MarkAllRead(ctx context.Context, userID stri
 	return nil
 }
 
+func (s *PostgresNotificationStore) MarkReadByInviteID(ctx context.Context, userID, inviteID string) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE notifications SET read_at = $1
+		WHERE user_id = $2 AND type = 'project_invitation' AND read_at IS NULL
+		  AND data->>'invite_id' = $3`,
+		time.Now().UTC(), userID, inviteID)
+	if err != nil {
+		return fmt.Errorf("mark notification read by invite id: %w", err)
+	}
+	return nil
+}
+
 func (s *PostgresNotificationStore) Delete(ctx context.Context, id, userID string) error {
 	_, err := s.db.ExecContext(ctx, `
 		DELETE FROM notifications WHERE id = $1 AND user_id = $2`,

@@ -175,7 +175,7 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
 		OrganizationsHandler: organizationshttp.NewHandler(orgStore, notificationSvc, logger),
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
-		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, logger),
+		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, notificationSvc, logger),
 		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, orgStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
 		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),

@@ -19,6 +19,7 @@ type OrganizationRepository interface {
 	ListByUserID(ctx context.Context, userID string) ([]*domain.Organization, error)
 	ListMembers(ctx context.Context, orgID string) ([]*domain.Member, error)
 	GetMember(ctx context.Context, orgID, userID string) (*domain.Member, error)
+	FindMemberByEmail(ctx context.Context, email string) (*domain.Member, error)
 	AddMember(ctx context.Context, member *domain.Member) error
 	UpdateMemberRole(ctx context.Context, orgID, userID, role string) error
 	RemoveMember(ctx context.Context, orgID, userID string) error
