@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	orgports "github.com/kleffio/platform/internal/core/organizations/ports"
+	projectdomain "github.com/kleffio/platform/internal/core/projects/domain"
 	projectports "github.com/kleffio/platform/internal/core/projects/ports"
 	"github.com/kleffio/platform/internal/core/workloads/application/commands"
 	"github.com/kleffio/platform/internal/core/workloads/domain"
@@ -62,13 +62,24 @@ func (h *Handler) RegisterInternalRoutes(r chi.Router) {
 func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	orgID := h.callerOrganizationID(r)
-	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+	effectiveOrgID, err := h.ensureProjectAccess(r, projectID, orgID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 			return
 		}
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 		return
+	}
+	// Viewers may not create workloads — requires developer or above.
+	if h.projects != nil {
+		if claims, ok := middleware.ClaimsFromContext(r.Context()); ok && claims.Subject != "" {
+			member, memberErr := h.projects.GetMember(r.Context(), projectID, claims.Subject)
+			if memberErr == nil && projectdomain.RoleRank(member.Role) < projectdomain.RoleRank(projectdomain.RoleDeveloper) {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden: requires developer role or higher"})
+				return
+			}
+		}
 	}
 	var req struct {
 		OrganizationID string            `json:"organization_id"`
@@ -108,7 +119,7 @@ func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 		initiatedBy = claims.Subject
 	}
 	res, err := h.provision.Handle(r.Context(), commands.ProvisionWorkloadCommand{
-		OrganizationID: orgID,
+		OrganizationID: effectiveOrgID,
 		ProjectID:      projectID,
 		OwnerID:        req.OwnerID,
 		ServerName:     req.ServerName,
@@ -137,7 +148,7 @@ func (h *Handler) provisionWorkload(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	orgID := h.callerOrganizationID(r)
-	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+	if _, err := h.ensureProjectAccess(r, projectID, orgID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 			return
@@ -270,7 +281,8 @@ func (h *Handler) runAction(w http.ResponseWriter, r *http.Request, action queue
 	projectID := chi.URLParam(r, "projectID")
 	workloadID := chi.URLParam(r, "id")
 	orgID := h.callerOrganizationID(r)
-	if err := h.ensureProjectAccess(r.Context(), projectID, orgID); err != nil {
+	effectiveOrgID, err := h.ensureProjectAccess(r, projectID, orgID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found"})
 			return
@@ -283,8 +295,8 @@ func (h *Handler) runAction(w http.ResponseWriter, r *http.Request, action queue
 		initiatedBy = claims.Subject
 	}
 
-	err := h.action.Handle(r.Context(), commands.WorkloadActionCommand{
-		OrganizationID: orgID,
+	err = h.action.Handle(r.Context(), commands.WorkloadActionCommand{
+		OrganizationID: effectiveOrgID,
 		ProjectID:      projectID,
 		WorkloadID:     workloadID,
 		Action:         action,
@@ -362,16 +374,46 @@ func isValidWorkloadState(state domain.WorkloadState) bool {
 	}
 }
 
-func (h *Handler) ensureProjectAccess(ctx context.Context, projectID, organizationID string) error {
-	if organizationID == "" || h.projects == nil {
-		return nil
+// ensureProjectAccess checks that the caller may access the given project.
+// It returns the effective organization ID to forward to application commands:
+// the caller's org when it matches the project, or "" when access was granted
+// via explicit project membership (cross-org invite), which causes commands to
+// skip their redundant org check.
+func (h *Handler) ensureProjectAccess(r *http.Request, projectID, organizationID string) (string, error) {
+	if h.projects == nil {
+		return organizationID, nil
 	}
-	project, err := h.projects.FindByID(ctx, projectID)
+	project, err := h.projects.FindByID(r.Context(), projectID)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if project.OrganizationID != organizationID {
-		return fmt.Errorf("forbidden: project does not belong to caller organization")
+
+	h.logger.Debug("ensureProjectAccess",
+		"project_id", projectID,
+		"project_org", project.OrganizationID,
+		"caller_org", organizationID,
+	)
+
+	// Org matches — access granted, forward caller org normally.
+	if organizationID == "" || project.OrganizationID == organizationID {
+		return organizationID, nil
 	}
-	return nil
+
+	// Org doesn't match, but caller may be an explicit project member
+	// (e.g. an invited user whose personal org differs from the project owner's org).
+	if claims, ok := middleware.ClaimsFromContext(r.Context()); ok && claims.Subject != "" {
+		_, memberErr := h.projects.GetMember(r.Context(), projectID, claims.Subject)
+		h.logger.Debug("ensureProjectAccess member check",
+			"project_id", projectID,
+			"subject", claims.Subject,
+			"member_err", memberErr,
+		)
+		if memberErr == nil {
+			// Return "" so commands skip the org ownership check — access
+			// was already validated here via project membership.
+			return "", nil
+		}
+	}
+
+	return "", fmt.Errorf("forbidden: project does not belong to caller organization")
 }

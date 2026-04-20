@@ -169,13 +169,9 @@ func NewContainer(cfg *Config, logger *slog.Logger) (*Container, error) {
 		AuthHandler:          pluginhttp.NewAuthHandler(pluginMgr, logger),
 		SetupHandler:         pluginhttp.NewSetupHandler(pluginMgr, catalogRegistry, logger),
 		CatalogHandler:       cataloghttp.NewHandler(catalogStore, logger),
-<<<<<<< HEAD
-		OrganizationsHandler: organizationshttp.NewHandler(orgStore, logger),
-=======
 		OrganizationsHandler: organizationshttp.NewHandler(orgStore, notificationSvc, logger),
->>>>>>> 3dfd032d9615a84ab165078151f46e398eba8f83
 		DeploymentsHandler:   deploymentshttp.NewHandler(createDeployment, serverAction, deploymentStore, cfg.SecretKey, logger),
-		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, logger),
+		ProjectsHandler:      projectshttp.NewHandler(projectsStore, orgStore, notificationSvc, logger),
 		WorkloadsHandler:     workloadshttp.NewHandler(projectsStore, orgStore, workloadsStore, provisionHandler, workloadAction, bus, logger),
 		NodesHandler:         nodeshttp.NewHandler(nodeStore, logger),
 		BillingHandler:       billinghttp.NewHandler(logger),

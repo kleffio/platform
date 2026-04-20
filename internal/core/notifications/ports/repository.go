@@ -27,6 +27,10 @@ type NotificationRepository interface {
 	// MarkAllRead sets read_at to now for every unread notification owned by userID.
 	MarkAllRead(ctx context.Context, userID string) error
 
+	// MarkReadByInviteID marks as read any unread project_invitation notification for userID
+	// whose data->>'invite_id' matches inviteID.
+	MarkReadByInviteID(ctx context.Context, userID, inviteID string) error
+
 	// Delete removes a notification owned by userID.
 	Delete(ctx context.Context, id, userID string) error
 }

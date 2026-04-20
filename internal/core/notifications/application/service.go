@@ -76,6 +76,11 @@ func (s *Service) MarkAllRead(ctx context.Context, userID string) error {
 	return s.repo.MarkAllRead(ctx, userID)
 }
 
+// MarkReadByInviteID marks the project_invitation notification for this invite as read.
+func (s *Service) MarkReadByInviteID(ctx context.Context, userID, inviteID string) error {
+	return s.repo.MarkReadByInviteID(ctx, userID, inviteID)
+}
+
 // Delete removes a notification. The notification must belong to userID.
 func (s *Service) Delete(ctx context.Context, id, userID string) error {
 	return s.repo.Delete(ctx, id, userID)

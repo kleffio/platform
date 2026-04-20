@@ -2,6 +2,52 @@ package domain
 
 import "time"
 
+// Role constants for project membership.
+const (
+	RoleOwner      = "owner"
+	RoleMaintainer = "maintainer"
+	RoleDeveloper  = "developer"
+	RoleViewer     = "viewer"
+)
+
+// ValidRoles is the ordered set of project roles from least to most privileged.
+var ValidRoles = []string{RoleViewer, RoleDeveloper, RoleMaintainer, RoleOwner}
+
+// RoleRank returns a numeric rank for a role (higher = more privileged).
+func RoleRank(role string) int {
+	for i, r := range ValidRoles {
+		if r == role {
+			return i
+		}
+	}
+	return -1
+}
+
+// ProjectMember is a user with a role in a project.
+type ProjectMember struct {
+	ProjectID   string    `json:"project_id"`
+	UserID      string    `json:"user_id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	Role        string    `json:"role"`
+	InvitedBy   string    `json:"invited_by"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// ProjectInvite is a pending email invitation to a project.
+type ProjectInvite struct {
+	ID           string     `json:"id"`
+	ProjectID    string     `json:"project_id"`
+	InvitedEmail string     `json:"invited_email"`
+	Role         string     `json:"role"`
+	Token        string     `json:"token,omitempty"`
+	TokenHash    string     `json:"-"`
+	InvitedBy    string     `json:"invited_by"`
+	ExpiresAt    time.Time  `json:"expires_at"`
+	AcceptedAt   *time.Time `json:"accepted_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
 type Project struct {
 	ID             string    `json:"id"`
 	OrganizationID string    `json:"organization_id"`

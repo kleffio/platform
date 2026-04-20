@@ -102,6 +102,15 @@ func (s *PostgresOrgStore) GetMember(ctx context.Context, orgID, userID string) 
 	return scanMember(row)
 }
 
+func (s *PostgresOrgStore) FindMemberByEmail(ctx context.Context, email string) (*domain.Member, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT org_id, user_id, email, display_name, role, created_at
+		FROM organization_members
+		WHERE LOWER(email) = LOWER($1)
+		LIMIT 1`, email)
+	return scanMember(row)
+}
+
 func (s *PostgresOrgStore) AddMember(ctx context.Context, m *domain.Member) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO organization_members (org_id, user_id, email, display_name, role, created_at)
