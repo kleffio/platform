@@ -397,7 +397,7 @@ func (s *PostgresProjectStore) AcceptInvite(ctx context.Context, tokenHash, user
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback() //nolint:errcheck
 
 	var inv domain.ProjectInvite
 	var acceptedAt sql.NullTime
